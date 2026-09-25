@@ -35,6 +35,28 @@
   const UNSURE_LOG_KEY = "unsureLog";
   const LLM_CACHE_KEY = "llmCache";
 
+  // After the extension is reloaded/updated, this already-injected content
+  // script keeps running in the open Gmail tab but its chrome.* APIs are dead
+  // ("Extension context invalidated"). Guard every storage call so the
+  // orphaned instance stops quietly instead of throwing until the tab reloads.
+  function contextAlive() {
+    try { return !!(chrome && chrome.runtime && chrome.runtime.id); }
+    catch (e) { return false; }
+  }
+  function onContextDead() {
+    if (observer) { try { observer.disconnect(); } catch (e) {} observer = null; }
+  }
+  function safeGet(keys, cb) {
+    if (!store) return;
+    if (!contextAlive()) return onContextDead();
+    try { store.get(keys, cb); } catch (e) { onContextDead(); }
+  }
+  function safeSet(obj, cb) {
+    if (!store) return;
+    if (!contextAlive()) return onContextDead();
+    try { store.set(obj, cb); } catch (e) { onContextDead(); }
+  }
+
   // Persistent LLM result cache: row id -> resolved category. Guarantees each
   // email is sent to the LLM at most once, across redraws and reloads.
   const llmCache = {};
@@ -50,8 +72,8 @@
   const skip = new Set();
 
   function seedState(done) {
-    if (!store) return done();
-    store.get([UNSURE_LOG_KEY, LLM_CACHE_KEY], function (res) {
+    if (!store || !contextAlive()) return done();
+    safeGet([UNSURE_LOG_KEY, LLM_CACHE_KEY], function (res) {
       (res[UNSURE_LOG_KEY] || []).forEach(function (e) {
         if (e.id) loggedUnsure.set(e.id, e.llmCategory != null ? e.llmCategory : null);
       });
@@ -63,11 +85,10 @@
 
   function cacheLLM(id, category) {
     llmCache[id] = category;
-    if (!store) return;
-    store.get([LLM_CACHE_KEY], function (res) {
+    safeGet([LLM_CACHE_KEY], function (res) {
       const cache = res[LLM_CACHE_KEY] || {};
       cache[id] = category;
-      store.set({ [LLM_CACHE_KEY]: cache });
+      safeSet({ [LLM_CACHE_KEY]: cache });
     });
   }
 
@@ -92,14 +113,14 @@
     const nextLlm = entry.llmCategory != null ? entry.llmCategory : null;
     if (loggedUnsure.has(entry.id) && loggedUnsure.get(entry.id) === nextLlm) return;
     loggedUnsure.set(entry.id, nextLlm);
-    store.get([UNSURE_LOG_KEY], function (res) {
+    safeGet([UNSURE_LOG_KEY], function (res) {
       const log = res[UNSURE_LOG_KEY] || [];
       let found = false;
       for (let i = 0; i < log.length; i++) {
         if (log[i].id === entry.id) { log[i] = entry; found = true; break; }
       }
       if (!found) log.push(entry);
-      store.set({ [UNSURE_LOG_KEY]: log }, dumpUnsureLog);
+      safeSet({ [UNSURE_LOG_KEY]: log }, dumpUnsureLog);
     });
   }
 
@@ -147,8 +168,7 @@
   // only in this content script's isolated world), so we print the stored
   // Unsure log here on load and whenever it changes. Look for "UNiBOX unsureLog".
   function dumpUnsureLog() {
-    if (!store) return;
-    store.get([UNSURE_LOG_KEY], function (res) {
+    safeGet([UNSURE_LOG_KEY], function (res) {
       const log = res[UNSURE_LOG_KEY] || [];
       console.log("UNiBOX unsureLog (" + log.length + " entries):", log);
     });
