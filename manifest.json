@@ -3,10 +3,11 @@
   "name": "UNiBOX",
   "version": "0.1.0",
   "description": "Adds a filter bar above Gmail to sort university emails into categories. Display only — never modifies, archives, or deletes anything.",
+  "permissions": ["storage"],
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
-      "js": ["selectors.js", "content.js"],
+      "js": ["selectors.js", "rules.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

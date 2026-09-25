@@ -15,6 +15,44 @@
     return;
   }
 
+  const classify = window.UNIBOX_CLASSIFY;
+  if (!classify) {
+    console.error("UNiBOX: rules.js did not load before content.js");
+    return;
+  }
+
+  // chrome.storage needs the "storage" permission in manifest.json. Guard in
+  // case it's ever missing so scanning still works without the log.
+  const store =
+    typeof chrome !== "undefined" && chrome.storage && chrome.storage.local
+      ? chrome.storage.local
+      : null;
+  const UNSURE_LOG_KEY = "unsureLog";
+
+  // Ids already written to the log, so the same Unsure email isn't appended
+  // again on every rescan (scroll, tab switch). Seeded from storage on load.
+  const loggedIds = new Set();
+  function seedLoggedIds(done) {
+    if (!store) return done();
+    store.get([UNSURE_LOG_KEY], function (res) {
+      (res[UNSURE_LOG_KEY] || []).forEach(function (e) {
+        if (e.id) loggedIds.add(e.id);
+      });
+      done();
+    });
+  }
+
+  function logUnsure(entries) {
+    if (!store || entries.length === 0) return;
+    const fresh = entries.filter(function (e) { return !loggedIds.has(e.id); });
+    if (fresh.length === 0) return;
+    fresh.forEach(function (e) { loggedIds.add(e.id); });
+    store.get([UNSURE_LOG_KEY], function (res) {
+      const log = res[UNSURE_LOG_KEY] || [];
+      store.set({ [UNSURE_LOG_KEY]: log.concat(fresh) });
+    });
+  }
+
   // How long to wait after DOM activity settles before re-scanning. Gmail
   // fires many tiny mutations while scrolling/redrawing; debouncing keeps
   // us from scanning on every one.
@@ -83,8 +121,31 @@
   function scan() {
     const root = observed || findContainer() || document;
     const rows = Array.from(root.querySelectorAll(S.row)).filter(isVisible);
-    const data = rows.map(extractRow);
+    const data = rows.map(function (row) {
+      const r = extractRow(row);
+      const c = classify(r);
+      r.category = c.category;
+      r.reason = c.reason; // "possible-hackathon" or null
+      return r;
+    });
     console.log("UNiBOX scan:", data.length, "rows", data);
+
+    // Log Unsure rows for later review / rules.txt improvement.
+    const unsure = data
+      .filter(function (d) { return d.category === "Unsure"; })
+      .map(function (d) {
+        return {
+          id: d.id,
+          senderName: d.senderName,
+          senderEmail: d.senderEmail,
+          subject: d.subject,
+          snippet: d.snippet,
+          reason: d.reason,
+          timestamp: new Date().toISOString(),
+        };
+      });
+    logUnsure(unsure);
+
     return data;
   }
 
@@ -138,7 +199,8 @@
     });
 
     console.log("UNiBOX loaded - watching inbox for changes");
-    scan(); // initial scan of whatever is already rendered
+    // Seed the dedup set from any existing log, then do the first scan.
+    seedLoggedIds(scan);
   }
 
   start();
