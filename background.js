@@ -65,8 +65,9 @@ function parseCategory(data) {
   }
 }
 
-const MIN_GAP_MS = 4500; // spacing between calls (~13/min, under Gemini's free 15 RPM)
+const MIN_GAP_MS = 6000; // spacing between calls (~10/min; safe even on 10-RPM free tiers)
 const MAX_RETRIES = 5; // retries on transient failures (429, 5xx, network)
+const BACKOFF_STEP_MS = 2000; // base backoff; grows per attempt
 
 function sleep(ms) {
   return new Promise(function (r) { setTimeout(r, ms); });
@@ -117,7 +118,7 @@ async function doClassify(row) {
       resp = await callApi(s, body);
     } catch (e) {
       // Network error / "Failed to fetch": transient, back off and retry.
-      const delay = 1500 * (attempt + 1);
+      const delay = BACKOFF_STEP_MS * (attempt + 1);
       console.warn("UNiBOX bg: fetch threw", String(e), "- retry in", delay, "ms");
       await sleep(delay);
       continue;
@@ -127,7 +128,7 @@ async function doClassify(row) {
     // Back off and retry (respect Retry-After when present).
     if (resp.status === 429 || resp.status >= 500) {
       const ra = parseInt(resp.headers.get("retry-after"), 10);
-      const delay = ra > 0 ? ra * 1000 : 1500 * (attempt + 1);
+      const delay = ra > 0 ? ra * 1000 : BACKOFF_STEP_MS * (attempt + 1);
       console.warn("UNiBOX bg: transient", resp.status, "- retry in", delay, "ms");
       await sleep(delay);
       continue;
