@@ -233,17 +233,29 @@
     return { id, senderName, senderEmail, subject, snippet };
   }
 
-  // Gmail keeps previously-visited label lists in the DOM but hidden
-  // (display:none) rather than removing them, so a document-wide query
-  // accumulates stale rows from every view you've opened. A hidden element
-  // has no offsetParent, so this keeps only the rows actually on screen.
-  function isVisible(el) {
-    return el.offsetParent !== null;
+  // Is this row part of the currently active list view?
+  //
+  // Gmail keeps previously-visited label lists in the DOM but hidden, by
+  // setting display:none on an ANCESTOR container -- those we want to skip.
+  // But our OWN category filter hides individual rows by setting display:none
+  // on the row itself. We must still count and decorate those, otherwise a
+  // rescan while a filter is active (e.g. after opening a mail and coming
+  // back) would recount every other category as 0.
+  //
+  // So: walk the ancestors and treat the row as inactive only if an ancestor
+  // is hidden. The row's own display (which our filter may set) is ignored.
+  function inActiveView(row) {
+    let el = row.parentElement;
+    while (el && el !== document.body) {
+      if (getComputedStyle(el).display === "none") return false;
+      el = el.parentElement;
+    }
+    return true;
   }
 
   function scan() {
     const root = observed || findContainer() || document;
-    const rows = Array.from(root.querySelectorAll(S.row)).filter(isVisible);
+    const rows = Array.from(root.querySelectorAll(S.row)).filter(inActiveView);
     const data = rows.map(function (row) {
       const r = extractRow(row);
       const c = classify(r);
