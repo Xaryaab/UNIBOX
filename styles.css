@@ -1,0 +1,89 @@
+/* UNiBOX - Stage 5 styles: filter bar + category dots.
+   Purely a visual overlay. Nothing here hides or changes Gmail's own data;
+   the only rows hidden are hidden via the category filter below, and only
+   by display:none (the DOM node stays put, so toggling back to All is
+   instant). */
+
+/* ---- filter bar ---- */
+#unibox-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #f6f8fc;
+  border-bottom: 1px solid #e0e3e7;
+  font-family: "Google Sans", Roboto, Arial, sans-serif;
+}
+
+.unibox-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 5px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 999px;
+  background: #fff;
+  color: #202124;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+.unibox-chip:hover { background: #f1f3f4; }
+
+.unibox-chip .unibox-chip-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--unibox-color, #9aa0a6);
+  flex: none;
+}
+.unibox-chip .unibox-chip-count {
+  color: #5f6368;
+  font-variant-numeric: tabular-nums;
+}
+
+/* selected chip */
+.unibox-chip[aria-pressed="true"] {
+  border-color: var(--unibox-color, #9aa0a6);
+  background: #e8f0fe;
+  font-weight: 600;
+}
+
+/* chip accent colors, one per category */
+.unibox-chip[data-cat="All"]          { --unibox-color: #5f6368; }
+.unibox-chip[data-cat="Hackathon"]    { --unibox-color: #8e24aa; }
+.unibox-chip[data-cat="Academic"]     { --unibox-color: #1a73e8; }
+.unibox-chip[data-cat="Announcement"] { --unibox-color: #f9ab00; }
+.unibox-chip[data-cat="Placement"]    { --unibox-color: #188038; }
+.unibox-chip[data-cat="Unsure"]       { --unibox-color: #d93025; }
+
+/* ---- per-row category dot ---- */
+.unibox-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: #9aa0a6;
+  flex: none;
+}
+.unibox-dot[data-cat="Hackathon"]    { background: #8e24aa; }
+.unibox-dot[data-cat="Academic"]     { background: #1a73e8; }
+.unibox-dot[data-cat="Announcement"] { background: #f9ab00; }
+.unibox-dot[data-cat="Placement"]    { background: #188038; }
+.unibox-dot[data-cat="Unsure"]       { background: #d93025; }
+
+/* ---- CSS-only category filter ----
+   content.js sets body[data-unibox-filter="<Category>"] when a chip other
+   than All is active, and tags each row with data-unibox-cat. These rules
+   then hide only the rows that don't match. Matching rows are never touched,
+   so their native Gmail display is preserved and All is instant. */
+body[data-unibox-filter="Hackathon"]    tr.zA.unibox-row:not([data-unibox-cat="Hackathon"])    { display: none; }
+body[data-unibox-filter="Academic"]     tr.zA.unibox-row:not([data-unibox-cat="Academic"])     { display: none; }
+body[data-unibox-filter="Announcement"] tr.zA.unibox-row:not([data-unibox-cat="Announcement"]) { display: none; }
+body[data-unibox-filter="Placement"]    tr.zA.unibox-row:not([data-unibox-cat="Placement"])    { display: none; }
+body[data-unibox-filter="Unsure"]       tr.zA.unibox-row:not([data-unibox-cat="Unsure"])       { display: none; }

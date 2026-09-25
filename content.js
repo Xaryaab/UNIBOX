@@ -1,10 +1,13 @@
-// UNiBOX - Stage 3: read the inbox rows.
+// UNiBOX - Stages 3-5: read rows, categorize, and lay a filter bar + dots
+// on top of the Gmail inbox.
 //
-// Display-only. This script NEVER opens, clicks, modifies, archives, or
-// deletes anything. It only reads what Gmail has already rendered in the
-// inbox list, and console.logs the extracted rows.
+// Display-only. This script NEVER opens, clicks, archives, moves, or deletes
+// anything in Gmail. It reads rendered rows and adds its OWN visual elements
+// (a filter bar and a colored dot per row); the category filter only hides
+// non-matching rows via CSS display:none -- Gmail's data is never changed.
 //
-// All Gmail-specific selectors live in selectors.js (loaded first).
+// All Gmail-specific selectors live in selectors.js (loaded first);
+// classification lives in rules.js.
 
 (function () {
   "use strict";
@@ -68,6 +71,115 @@
   // fires many tiny mutations while scrolling/redrawing; debouncing keeps
   // us from scanning on every one.
   const DEBOUNCE_MS = 400;
+
+  // ---------------------------------------------------------------------------
+  // Filter bar + category dots (Stage 5)
+  // ---------------------------------------------------------------------------
+  // "All" first (default, shows everything); the rest match rules.js output.
+  const CATEGORIES = ["All", "Hackathon", "Academic", "Announcement", "Placement", "Unsure"];
+  const BAR_ID = "unibox-bar";
+
+  // Which chip is active. Kept in a variable (and mirrored onto <body> as an
+  // attribute the CSS reads) so the filter survives Gmail redraws even if the
+  // bar node itself is briefly rebuilt.
+  let currentFilter = "All";
+
+  function setFilter(cat) {
+    currentFilter = cat;
+    // CSS in styles.css keys off this body attribute. "All" = no attribute.
+    if (cat === "All") {
+      document.body.removeAttribute("data-unibox-filter");
+    } else {
+      document.body.setAttribute("data-unibox-filter", cat);
+    }
+    const bar = document.getElementById(BAR_ID);
+    if (bar) {
+      bar.querySelectorAll(".unibox-chip").forEach(function (chip) {
+        chip.setAttribute("aria-pressed", String(chip.getAttribute("data-cat") === cat));
+      });
+    }
+  }
+
+  function buildChip(cat) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "unibox-chip";
+    chip.setAttribute("data-cat", cat);
+    chip.setAttribute("aria-pressed", String(cat === currentFilter));
+
+    const dot = document.createElement("span");
+    dot.className = "unibox-chip-dot";
+
+    const label = document.createElement("span");
+    label.className = "unibox-chip-label";
+    label.textContent = cat;
+
+    const count = document.createElement("span");
+    count.className = "unibox-chip-count";
+    count.textContent = "0";
+
+    chip.append(dot, label, count);
+    chip.addEventListener("click", function () { setFilter(cat); });
+    return chip;
+  }
+
+  // Inject the bar once, at the top of the inbox pane. If it already exists
+  // (e.g. from a previous render), reuse it -- never duplicate.
+  function ensureBar() {
+    let bar = document.getElementById(BAR_ID);
+    if (bar) return bar;
+    const container = observed || findContainer();
+    if (!container) return null;
+    bar = document.createElement("div");
+    bar.id = BAR_ID;
+    CATEGORIES.forEach(function (cat) { bar.appendChild(buildChip(cat)); });
+    container.insertBefore(bar, container.firstChild);
+    return bar;
+  }
+
+  function updateCounts(data) {
+    const bar = document.getElementById(BAR_ID);
+    if (!bar) return;
+    const counts = { All: data.length };
+    CATEGORIES.forEach(function (c) { if (c !== "All") counts[c] = 0; });
+    data.forEach(function (d) {
+      if (counts[d.category] !== undefined) counts[d.category] += 1;
+    });
+    bar.querySelectorAll(".unibox-chip").forEach(function (chip) {
+      const cat = chip.getAttribute("data-cat");
+      const el = chip.querySelector(".unibox-chip-count");
+      const next = String(counts[cat] || 0);
+      // Only write when changed -- otherwise our own text edit would trip the
+      // MutationObserver and cause an endless rescan loop.
+      if (el && el.textContent !== next) el.textContent = next;
+    });
+  }
+
+  // Tag a row for CSS filtering and give it a colored dot. Idempotent: the
+  // dot is created only once, so repeated scans don't duplicate it or thrash
+  // the observer.
+  function decorateRow(row, category) {
+    row.classList.add("unibox-row");
+    if (row.getAttribute("data-unibox-cat") !== category) {
+      row.setAttribute("data-unibox-cat", category);
+    }
+    let dot = row.querySelector(".unibox-dot");
+    if (!dot) {
+      dot = document.createElement("span");
+      dot.className = "unibox-dot";
+      const senderEl = row.querySelector(S.sender);
+      if (senderEl && senderEl.parentNode) {
+        senderEl.parentNode.insertBefore(dot, senderEl);
+      } else {
+        const cell = row.querySelector("td");
+        if (cell) cell.insertBefore(dot, cell.firstChild);
+      }
+    }
+    if (dot && dot.getAttribute("data-cat") !== category) {
+      dot.setAttribute("data-cat", category);
+      dot.title = "UNiBOX: " + category;
+    }
+  }
 
   function text(el) {
     return el ? el.textContent.trim() : "";
@@ -137,9 +249,14 @@
       const c = classify(r);
       r.category = c.category;
       r.reason = c.reason; // "possible-hackathon" or null
+      decorateRow(row, r.category); // dot + data-unibox-cat for filtering
       return r;
     });
     console.log("UNiBOX scan:", data.length, "rows", data);
+
+    // Keep the filter bar present and its counts current across redraws.
+    ensureBar();
+    updateCounts(data);
 
     // Log Unsure rows for later review / rules.txt improvement.
     const unsure = data
