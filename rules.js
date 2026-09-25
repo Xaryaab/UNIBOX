@@ -57,7 +57,7 @@
   // Display-name substrings (matched case-insensitively). Keep these specific
   // to the actual senders so batch-list mail from others isn't swept in.
   var SENDER_NAME_ROUTES = [
-    { match: "placement @ one stop", category: "Placement" },
+    { match: "placement", category: "Placement" }, // the placement office's name
     { match: "one stop islamabad", category: "Placement" },
     { match: "student affairs", category: "Announcement" },
     { match: "amir rehman", category: "Announcement" },

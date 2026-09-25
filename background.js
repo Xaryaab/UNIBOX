@@ -66,7 +66,7 @@ function parseCategory(data) {
 }
 
 const MIN_GAP_MS = 6000; // spacing between calls (~10/min; safe even on 10-RPM free tiers)
-const MAX_RETRIES = 5; // retries on transient failures (429, 5xx, network)
+const MAX_RETRIES = 3; // retries on transient failures (429, 5xx, network)
 const BACKOFF_STEP_MS = 2000; // base backoff; grows per attempt
 
 function sleep(ms) {
@@ -129,7 +129,13 @@ async function doClassify(row) {
     if (resp.status === 429 || resp.status >= 500) {
       const ra = parseInt(resp.headers.get("retry-after"), 10);
       const delay = ra > 0 ? ra * 1000 : BACKOFF_STEP_MS * (attempt + 1);
-      console.warn("UNiBOX bg: transient", resp.status, "- retry in", delay, "ms");
+      // Log the reason once (e.g. per-minute vs per-day quota) so we can tell
+      // a momentary spike from an exhausted daily free quota.
+      if (attempt === 0) {
+        const why = await resp.text();
+        console.warn("UNiBOX bg: transient", resp.status, why.slice(0, 250));
+      }
+      console.warn("UNiBOX bg: retry in", delay, "ms");
       await sleep(delay);
       continue;
     }
