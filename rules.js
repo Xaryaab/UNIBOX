@@ -63,7 +63,7 @@
     { match: "amir rehman", category: "Announcement" },
   ];
 
-  function routeBySender(email, name) {
+  function routeOne(email, name) {
     var byEmail = SENDER_EMAIL_ROUTES[norm(email)];
     if (byEmail) return byEmail;
     var lname = norm(name);
@@ -71,6 +71,16 @@
       if (lname.indexOf(SENDER_NAME_ROUTES[i].match) !== -1) {
         return SENDER_NAME_ROUTES[i].category;
       }
+    }
+    return null;
+  }
+
+  // Check every participant on the row (a reply thread lists several), so a
+  // trusted sender is caught even when they're not the first name shown.
+  function routeBySender(participants) {
+    for (var i = 0; i < participants.length; i++) {
+      var hit = routeOne(participants[i].email, participants[i].name);
+      if (hit) return hit;
     }
     return null;
   }
@@ -114,8 +124,12 @@
     var email = row.senderEmail || "";
     var subject = row.subject || "";
 
-    // 0. Trusted senders win over everything else.
-    var routed = routeBySender(email, name);
+    // 0. Trusted senders win over everything else. Check all participants on
+    // the row (falling back to the primary sender if none were collected).
+    var participants = (row.participants && row.participants.length)
+      ? row.participants
+      : [{ name: name, email: email }];
+    var routed = routeBySender(participants);
     if (routed) {
       return { category: routed, reason: null };
     }

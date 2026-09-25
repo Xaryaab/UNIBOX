@@ -209,19 +209,26 @@
   }
 
   function extractRow(row) {
-    const senderEl = row.querySelector(S.sender);
+    const senderEls = row.querySelectorAll(S.sender);
     const subjectEl = row.querySelector(S.subject);
     const snippetEl = row.querySelector(S.snippet);
 
-    const senderName = senderEl
-      ? senderEl.getAttribute(S.senderNameAttr) || text(senderEl)
-      : "";
+    // A conversation row can list several participants (e.g. a reply thread),
+    // each as its own span[email]. Collect them all, so classification can
+    // recognize a trusted sender even when they aren't the first name shown.
+    // sender email may be null if Gmail ever omits the `email` attribute; we
+    // do NOT infer it from other markup -- better an honest null.
+    const participants = Array.from(senderEls).map(function (el) {
+      return {
+        name: el.getAttribute(S.senderNameAttr) || text(el),
+        email: el.getAttribute(S.senderEmailAttr) || null,
+      };
+    });
 
-    // May be null if Gmail's markup ever omits the `email` attribute. We do
-    // NOT infer the address from other markup -- better an honest null.
-    const senderEmail = senderEl
-      ? senderEl.getAttribute(S.senderEmailAttr) || null
-      : null;
+    // Primary sender = first participant; used for display and the Unsure log.
+    const primary = participants[0] || { name: "", email: null };
+    const senderName = primary.name;
+    const senderEmail = primary.email;
 
     const subject = text(subjectEl);
 
@@ -230,7 +237,7 @@
 
     const id = findRowId(row, senderEmail + "|" + subject + "|" + snippet);
 
-    return { id, senderName, senderEmail, subject, snippet };
+    return { id, senderName, senderEmail, subject, snippet, participants };
   }
 
   // Is this row part of the currently active list view?
