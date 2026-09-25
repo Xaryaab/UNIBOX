@@ -1,13 +1,15 @@
-// UNiBOX - Stages 3-5: read rows, categorize, and lay a filter bar + dots
-// on top of the Gmail inbox.
+// UNiBOX - Stages 3-6: read rows, categorize, filter bar + dots, and send
+// rules-Unsure rows to the LLM (via the background service worker).
 //
 // Display-only. This script NEVER opens, clicks, archives, moves, or deletes
 // anything in Gmail. It reads rendered rows and adds its OWN visual elements
 // (a filter bar and a colored dot per row); the category filter only hides
 // non-matching rows via CSS display:none -- Gmail's data is never changed.
 //
-// All Gmail-specific selectors live in selectors.js (loaded first);
-// classification lives in rules.js.
+// Gmail selectors live in selectors.js; rule matching in rules.js; the actual
+// LLM API call (and the API key) live ONLY in background.js -- never here.
+// content.js sends {senderName, senderEmail, subject, snippet} to background
+// and gets back a category; email bodies are never read or sent.
 
 (function () {
   "use strict";
@@ -31,34 +33,119 @@
       ? chrome.storage.local
       : null;
   const UNSURE_LOG_KEY = "unsureLog";
+  const LLM_CACHE_KEY = "llmCache";
 
-  // Ids already written to the log, so the same Unsure email isn't appended
-  // again on every rescan (scroll, tab switch). Seeded from storage on load.
-  const loggedIds = new Set();
-  function seedLoggedIds(done) {
+  // Persistent LLM result cache: row id -> resolved category. Guarantees each
+  // email is sent to the LLM at most once, across redraws and reloads.
+  const llmCache = {};
+
+  // Unsure-log bookkeeping: id -> last llmCategory we wrote, so we only touch
+  // storage when a row's LLM decision actually changes.
+  const loggedUnsure = new Map();
+
+  // In-flight LLM requests, plus ids we won't retry this session (no key set,
+  // network error, rate limit). `skip` is in-memory only, so reloading Gmail
+  // retries them -- e.g. right after you add an API key in the options page.
+  const pending = new Set();
+  const skip = new Set();
+
+  function seedState(done) {
     if (!store) return done();
-    store.get([UNSURE_LOG_KEY], function (res) {
+    store.get([UNSURE_LOG_KEY, LLM_CACHE_KEY], function (res) {
       (res[UNSURE_LOG_KEY] || []).forEach(function (e) {
-        if (e.id) loggedIds.add(e.id);
+        if (e.id) loggedUnsure.set(e.id, e.llmCategory != null ? e.llmCategory : null);
       });
+      const cache = res[LLM_CACHE_KEY] || {};
+      Object.keys(cache).forEach(function (k) { llmCache[k] = cache[k]; });
       done();
     });
   }
 
-  function logUnsure(entries) {
-    if (!store || entries.length === 0) return;
-    const fresh = entries.filter(function (e) { return !loggedIds.has(e.id); });
-    if (fresh.length === 0) return;
-    fresh.forEach(function (e) { loggedIds.add(e.id); });
+  function cacheLLM(id, category) {
+    llmCache[id] = category;
+    if (!store) return;
+    store.get([LLM_CACHE_KEY], function (res) {
+      const cache = res[LLM_CACHE_KEY] || {};
+      cache[id] = category;
+      store.set({ [LLM_CACHE_KEY]: cache });
+    });
+  }
+
+  function makeUnsureEntry(d, llmCategory) {
+    return {
+      id: d.id,
+      senderName: d.senderName,
+      senderEmail: d.senderEmail,
+      subject: d.subject,
+      snippet: d.snippet,
+      reason: d.reason || null, // "possible-hackathon" or null
+      ruleCategory: "Unsure", // what rules.js decided (always Unsure here)
+      llmCategory: llmCategory != null ? llmCategory : null, // what the LLM said
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // Create or update this row's Unsure-log entry (merged by id), so the LLM's
+  // decision can be filled in after the fact. Writes only when it changed.
+  function recordUnsure(entry) {
+    if (!store) return;
+    const nextLlm = entry.llmCategory != null ? entry.llmCategory : null;
+    if (loggedUnsure.has(entry.id) && loggedUnsure.get(entry.id) === nextLlm) return;
+    loggedUnsure.set(entry.id, nextLlm);
     store.get([UNSURE_LOG_KEY], function (res) {
       const log = res[UNSURE_LOG_KEY] || [];
-      store.set({ [UNSURE_LOG_KEY]: log.concat(fresh) }, dumpUnsureLog);
+      let found = false;
+      for (let i = 0; i < log.length; i++) {
+        if (log[i].id === entry.id) { log[i] = entry; found = true; break; }
+      }
+      if (!found) log.push(entry);
+      store.set({ [UNSURE_LOG_KEY]: log }, dumpUnsureLog);
     });
+  }
+
+  // Ask the background service worker (which holds the key and makes the API
+  // call) to classify one Unsure row. Only sender name/email, subject and
+  // snippet are sent -- never the email body. Fires at most once per id.
+  function requestLLM(d) {
+    const id = d.id;
+    if (!store) return;
+    if (llmCache[id] || pending.has(id) || skip.has(id)) return;
+    if (!(typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id)) return;
+    pending.add(id);
+    try {
+      chrome.runtime.sendMessage(
+        {
+          type: "UNIBOX_CLASSIFY",
+          row: {
+            senderName: d.senderName,
+            senderEmail: d.senderEmail,
+            subject: d.subject,
+            snippet: d.snippet,
+          },
+        },
+        function (resp) {
+          pending.delete(id);
+          if (chrome.runtime.lastError || !resp) { skip.add(id); return; }
+          if (resp.cache) {
+            cacheLLM(id, resp.category);
+            recordUnsure(makeUnsureEntry(d, resp.category));
+            scheduleScan(); // re-apply categories/counts with the new result
+          } else {
+            // Not configured or a transient failure: fall back to Unsure
+            // silently and don't hammer it again this session.
+            skip.add(id);
+          }
+        }
+      );
+    } catch (e) {
+      pending.delete(id);
+      skip.add(id);
+    }
   }
 
   // The Gmail page's own console can't read chrome.storage (that API lives
   // only in this content script's isolated world), so we print the stored
-  // Unsure log here on load and whenever it grows. Look for "UNiBOX unsureLog".
+  // Unsure log here on load and whenever it changes. Look for "UNiBOX unsureLog".
   function dumpUnsureLog() {
     if (!store) return;
     store.get([UNSURE_LOG_KEY], function (res) {
@@ -266,8 +353,13 @@
     const data = rows.map(function (row) {
       const r = extractRow(row);
       const c = classify(r);
-      r.category = c.category;
+      r.ruleCategory = c.category; // what rules.js decided
       r.reason = c.reason; // "possible-hackathon" or null
+      // If rules were Unsure but the LLM has already resolved this row, use
+      // that cached decision as the displayed category.
+      r.llmCategory = llmCache[r.id] || null;
+      r.category =
+        c.category === "Unsure" && r.llmCategory ? r.llmCategory : c.category;
       decorateRow(row, r.category); // dot + data-unibox-cat for filtering
       return r;
     });
@@ -277,21 +369,13 @@
     ensureBar();
     updateCounts(data);
 
-    // Log Unsure rows for later review / rules.txt improvement.
-    const unsure = data
-      .filter(function (d) { return d.category === "Unsure"; })
-      .map(function (d) {
-        return {
-          id: d.id,
-          senderName: d.senderName,
-          senderEmail: d.senderEmail,
-          subject: d.subject,
-          snippet: d.snippet,
-          reason: d.reason,
-          timestamp: new Date().toISOString(),
-        };
-      });
-    logUnsure(unsure);
+    // Rows rules.js couldn't place: log them (recording the LLM's decision if
+    // we have one) and, if still unresolved, send them to the LLM once.
+    data.forEach(function (d) {
+      if (d.ruleCategory !== "Unsure") return;
+      recordUnsure(makeUnsureEntry(d, d.llmCategory));
+      if (!llmCache[d.id]) requestLLM(d);
+    });
 
     return data;
   }
@@ -346,9 +430,9 @@
     });
 
     console.log("UNiBOX loaded - watching inbox for changes");
-    // Seed the dedup set from any existing log, then do the first scan and
-    // print whatever is already in the Unsure log.
-    seedLoggedIds(function () {
+    // Seed the LLM cache and Unsure-log bookkeeping from storage, then do the
+    // first scan and print whatever is already in the Unsure log.
+    seedState(function () {
       scan();
       dumpUnsureLog();
     });
