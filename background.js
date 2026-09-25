@@ -65,7 +65,26 @@ function parseCategory(data) {
   }
 }
 
-async function classifyWithLLM(row) {
+const MIN_GAP_MS = 1200; // minimum spacing between upstream calls
+const MAX_RETRIES = 3; // retries on 429 rate limits
+
+function sleep(ms) {
+  return new Promise(function (r) { setTimeout(r, ms); });
+}
+
+// Serialize requests through a single chain so a burst of Unsure rows doesn't
+// hit the provider all at once -- free models rate-limit hard. Each row waits
+// its turn, and calls are spaced by MIN_GAP_MS.
+let queue = Promise.resolve();
+let lastCallAt = 0;
+
+function classifyWithLLM(row) {
+  const run = queue.then(function () { return doClassify(row); });
+  queue = run.catch(function () {}); // one failure must not break the chain
+  return run;
+}
+
+async function doClassify(row) {
   const s = await getSettings();
 
   // Not configured yet -> fall back to Unsure, and tell content.js NOT to
@@ -83,24 +102,43 @@ async function classifyWithLLM(row) {
     messages: buildMessages(row),
     temperature: 0,
   };
+  let useFormat = true; // structured output; dropped if the model rejects it
 
-  try {
-    // First try with structured-output enabled. Some (esp. free) models
-    // reject the response_format param, so on a non-OK response we retry once
-    // without it -- the prompt still asks for JSON and parseCategory salvages
-    // it from plain text.
-    let resp = await callApi(s, Object.assign({}, base, {
-      response_format: { type: "json_object" },
-    }));
-    if (!resp.ok) {
-      const body1 = await resp.text();
-      console.warn("UNiBOX bg: attempt 1 failed", resp.status, body1.slice(0, 300));
-      resp = await callApi(s, base);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const gap = MIN_GAP_MS - (Date.now() - lastCallAt);
+    if (gap > 0) await sleep(gap);
+    lastCallAt = Date.now();
+
+    let resp;
+    try {
+      const body = useFormat
+        ? Object.assign({}, base, { response_format: { type: "json_object" } })
+        : base;
+      resp = await callApi(s, body);
+    } catch (e) {
+      console.warn("UNiBOX bg: request threw", String(e));
+      return { category: "Unsure", cache: false };
     }
+
+    // Rate limited: back off and retry (respect Retry-After when present).
+    if (resp.status === 429) {
+      const ra = parseInt(resp.headers.get("retry-after"), 10);
+      const delay = ra > 0 ? ra * 1000 : 1500 * (attempt + 1);
+      console.warn("UNiBOX bg: 429 rate-limited, retry in", delay, "ms");
+      await sleep(delay);
+      continue;
+    }
+
+    // Model rejects the structured-output param: drop it and retry once.
+    if (resp.status === 400 && useFormat) {
+      console.warn("UNiBOX bg: 400 with response_format; retrying without it");
+      useFormat = false;
+      continue;
+    }
+
     if (!resp.ok) {
-      const body2 = await resp.text();
-      console.warn("UNiBOX bg: attempt 2 failed", resp.status, body2.slice(0, 300));
-      // Rate limit / auth / server error: silent Unsure, allow retry later.
+      const body = await resp.text();
+      console.warn("UNiBOX bg: failed", resp.status, body.slice(0, 300));
       return { category: "Unsure", cache: false };
     }
 
@@ -108,11 +146,10 @@ async function classifyWithLLM(row) {
     const category = parseCategory(data);
     console.log("UNiBOX bg: classified", { subject: row.subject, category });
     return { category, cache: true };
-  } catch (e) {
-    // Network error etc.: silent Unsure, allow retry later.
-    console.warn("UNiBOX bg: request threw", String(e));
-    return { category: "Unsure", cache: false };
   }
+
+  console.warn("UNiBOX bg: gave up after retries (still rate-limited)");
+  return { category: "Unsure", cache: false };
 }
 
 function callApi(s, body) {
