@@ -74,23 +74,23 @@ async function classifyWithLLM(row) {
     return { category: "Unsure", cache: false };
   }
 
-  try {
-    const resp = await fetch(s.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + s.apiKey,
-      },
-      body: JSON.stringify({
-        model: s.model || "gpt-4o-mini",
-        messages: buildMessages(row),
-        temperature: 0,
-        // OpenAI-compatible structured output. If a provider rejects this,
-        // parseCategory still salvages a category from plain-text JSON.
-        response_format: { type: "json_object" },
-      }),
-    });
+  const base = {
+    model: s.model || "openai/gpt-4o-mini",
+    messages: buildMessages(row),
+    temperature: 0,
+  };
 
+  try {
+    // First try with structured-output enabled. Some (esp. free) models
+    // reject the response_format param, so on a non-OK response we retry once
+    // without it -- the prompt still asks for JSON and parseCategory salvages
+    // it from plain text.
+    let resp = await callApi(s, Object.assign({}, base, {
+      response_format: { type: "json_object" },
+    }));
+    if (!resp.ok) {
+      resp = await callApi(s, base);
+    }
     if (!resp.ok) {
       // Rate limit / auth / server error: silent Unsure, allow retry later.
       return { category: "Unsure", cache: false };
@@ -102,6 +102,17 @@ async function classifyWithLLM(row) {
     // Network error etc.: silent Unsure, allow retry later.
     return { category: "Unsure", cache: false };
   }
+}
+
+function callApi(s, body) {
+  return fetch(s.endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + s.apiKey,
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
