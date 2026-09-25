@@ -94,18 +94,39 @@
     return null;
   }
 
-  function start() {
+  // Attach the observer to the current container. Gmail can swap in a new
+  // main-pane node when you switch labels (Inbox -> Sent), which detaches
+  // the old node and silently kills an observer bound to it. So re-resolve
+  // the container and re-bind whenever it has changed.
+  let observer = null;
+  let observed = null;
+  function ensureObserving() {
     const container = findContainer();
-    if (!container) {
+    if (container && container !== observed) {
+      if (observer) observer.disconnect();
+      observer = new MutationObserver(scheduleScan);
+      // We only observe -- never mutate.
+      observer.observe(container, { childList: true, subtree: true });
+      observed = container;
+    }
+  }
+
+  function start() {
+    if (!findContainer()) {
       // Gmail's SPA shell may not be mounted yet; retry shortly.
       setTimeout(start, 1000);
       return;
     }
 
-    // Watch the inbox for structural changes: scrolling in new rows,
-    // switching labels, new mail arriving. We only observe -- never mutate.
-    const observer = new MutationObserver(scheduleScan);
-    observer.observe(container, { childList: true, subtree: true });
+    ensureObserving();
+
+    // Label/view switches in Gmail change the URL hash (#inbox, #sent,
+    // #label/...). The mutation observer alone can miss these if the
+    // container node was replaced, so also re-check on every hash change.
+    window.addEventListener("hashchange", function () {
+      ensureObserving();
+      scheduleScan();
+    });
 
     console.log("UNiBOX loaded - watching inbox for changes");
     scan(); // initial scan of whatever is already rendered
