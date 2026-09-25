@@ -72,9 +72,18 @@
     return { id, senderName, senderEmail, subject, snippet };
   }
 
+  // Gmail keeps previously-visited label lists in the DOM but hidden
+  // (display:none) rather than removing them, so a document-wide query
+  // accumulates stale rows from every view you've opened. A hidden element
+  // has no offsetParent, so this keeps only the rows actually on screen.
+  function isVisible(el) {
+    return el.offsetParent !== null;
+  }
+
   function scan() {
-    const rows = document.querySelectorAll(S.row);
-    const data = Array.from(rows).map(extractRow);
+    const root = observed || findContainer() || document;
+    const rows = Array.from(root.querySelectorAll(S.row)).filter(isVisible);
+    const data = rows.map(extractRow);
     console.log("UNiBOX scan:", data.length, "rows", data);
     return data;
   }
