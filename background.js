@@ -65,7 +65,7 @@ function parseCategory(data) {
   }
 }
 
-const MIN_GAP_MS = 1200; // minimum spacing between upstream calls
+const MIN_GAP_MS = 4500; // spacing between calls (~13/min, under Gemini's free 15 RPM)
 const MAX_RETRIES = 3; // retries on 429 rate limits
 
 function sleep(ms) {
