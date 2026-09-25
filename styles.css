@@ -10,28 +10,41 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  background: #f6f8fc;
-  border-bottom: 1px solid #e0e3e7;
+  padding: 10px 16px;
+  background: linear-gradient(#ffffff, #f6f8fc);
+  border-bottom: 1px solid #e6e9ee;
   font-family: "Google Sans", Roboto, Arial, sans-serif;
+}
+
+.unibox-brand {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #1a73e8;
+  margin-right: 6px;
+  user-select: none;
 }
 
 .unibox-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   margin: 0;
-  padding: 5px 12px;
+  padding: 6px 12px;
   border: 1px solid #dadce0;
   border-radius: 999px;
   background: #fff;
-  color: #202124;
+  color: #3c4043;
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
   user-select: none;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
-.unibox-chip:hover { background: #f1f3f4; }
+.unibox-chip:hover {
+  background: #f1f3f4;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.15);
+}
 
 .unibox-chip .unibox-chip-dot {
   width: 9px;
@@ -41,15 +54,26 @@
   flex: none;
 }
 .unibox-chip .unibox-chip-count {
+  min-width: 16px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eceff1;
   color: #5f6368;
+  font-size: 11px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-/* selected chip */
+/* selected chip: tinted with its own category color */
 .unibox-chip[aria-pressed="true"] {
   border-color: var(--unibox-color, #9aa0a6);
-  background: #e8f0fe;
+  background: color-mix(in srgb, var(--unibox-color, #9aa0a6) 14%, #fff);
+  color: #202124;
   font-weight: 600;
+}
+.unibox-chip[aria-pressed="true"] .unibox-chip-count {
+  background: color-mix(in srgb, var(--unibox-color, #9aa0a6) 22%, #fff);
+  color: #202124;
 }
 
 /* chip accent colors, one per category */
@@ -69,6 +93,7 @@
   margin-right: 6px;
   vertical-align: middle;
   background: #9aa0a6;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
   flex: none;
 }
 .unibox-dot[data-cat="Hackathon"]    { background: #8e24aa; }

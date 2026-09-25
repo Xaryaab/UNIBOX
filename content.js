@@ -171,6 +171,11 @@
   // bar node itself is briefly rebuilt.
   let currentFilter = "All";
 
+  // Latest per-category counts, so the toolbar popup can show live numbers.
+  let lastCounts = {
+    All: 0, Hackathon: 0, Academic: 0, Announcement: 0, Placement: 0, Unsure: 0,
+  };
+
   function setFilter(cat) {
     currentFilter = cat;
     // CSS in styles.css keys off this body attribute. "All" = no attribute.
@@ -219,19 +224,24 @@
     if (!container) return null;
     bar = document.createElement("div");
     bar.id = BAR_ID;
+    const brand = document.createElement("span");
+    brand.className = "unibox-brand";
+    brand.textContent = "UNiBOX";
+    bar.appendChild(brand);
     CATEGORIES.forEach(function (cat) { bar.appendChild(buildChip(cat)); });
     container.insertBefore(bar, container.firstChild);
     return bar;
   }
 
   function updateCounts(data) {
-    const bar = document.getElementById(BAR_ID);
-    if (!bar) return;
     const counts = { All: data.length };
     CATEGORIES.forEach(function (c) { if (c !== "All") counts[c] = 0; });
     data.forEach(function (d) {
       if (counts[d.category] !== undefined) counts[d.category] += 1;
     });
+    lastCounts = counts; // expose to the popup
+    const bar = document.getElementById(BAR_ID);
+    if (!bar) return;
     bar.querySelectorAll(".unibox-chip").forEach(function (chip) {
       const cat = chip.getAttribute("data-cat");
       const el = chip.querySelector(".unibox-chip-count");
@@ -435,6 +445,20 @@
     seedState(function () {
       scan();
       dumpUnsureLog();
+    });
+  }
+
+  // Let the toolbar popup read live counts and drive the filter. The popup
+  // reaches this content script via chrome.tabs.sendMessage.
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+      if (!msg) return;
+      if (msg.type === "UNIBOX_GET_COUNTS") {
+        sendResponse({ counts: lastCounts, filter: currentFilter });
+      } else if (msg.type === "UNIBOX_SET_FILTER" && msg.category) {
+        setFilter(msg.category);
+        sendResponse({ ok: true, filter: currentFilter });
+      }
     });
   }
 
