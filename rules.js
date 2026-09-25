@@ -39,6 +39,16 @@
     return at === -1 ? "" : e.slice(at + 1);
   }
 
+  // --- rule 0: trusted senders (highest priority) --------------------------
+  // Mail from these addresses is routed by SENDER alone and overrides every
+  // subject-based rule below -- e.g. an announcement that happens to mention
+  // "Competition" still lands in Announcement, not Hackathon.
+  var SENDER_ROUTES = {
+    "placement.isb@nu.edu.pk": "Placement",
+    "amir.rehman@nu.edu.pk": "Announcement",
+    "studentaffairs.isb@nu.edu.pk": "Announcement",
+  };
+
   // --- rule 1: Hackathon ---------------------------------------------------
   // Hard keywords: a clear match here IS a Hackathon.
   var HACK_SUBJECT_KEYWORDS = ["Competition", "Hackathon", "Hack Summer", "Build with AI"];
@@ -77,6 +87,12 @@
     var name = row.senderName || "";
     var email = row.senderEmail || "";
     var subject = row.subject || "";
+
+    // 0. Trusted senders win over everything else.
+    var routed = SENDER_ROUTES[norm(email)];
+    if (routed) {
+      return { category: routed, reason: null };
+    }
 
     // 1. Hackathon / Competition -- hard keyword match wins outright.
     if (containsAny(subject, HACK_SUBJECT_KEYWORDS)) {

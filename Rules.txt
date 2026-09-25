@@ -1,5 +1,10 @@
 Priority order: check top to bottom, first match wins.
 
+0. Trusted senders (highest priority, override every rule below)
+   sender email = placement.isb@nu.edu.pk        -> Placement
+   sender email = amir.rehman@nu.edu.pk          -> Announcement
+   sender email = studentaffairs.isb@nu.edu.pk   -> Announcement
+
 1. Hackathon / Competition
    subject contains "Competition", "Hackathon", "Hack Summer", "Build with AI"
      -> Hackathon
