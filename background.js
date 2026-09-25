@@ -66,7 +66,7 @@ function parseCategory(data) {
 }
 
 const MIN_GAP_MS = 4500; // spacing between calls (~13/min, under Gemini's free 15 RPM)
-const MAX_RETRIES = 3; // retries on 429 rate limits
+const MAX_RETRIES = 5; // retries on transient failures (429, 5xx, network)
 
 function sleep(ms) {
   return new Promise(function (r) { setTimeout(r, ms); });
@@ -116,15 +116,19 @@ async function doClassify(row) {
         : base;
       resp = await callApi(s, body);
     } catch (e) {
-      console.warn("UNiBOX bg: request threw", String(e));
-      return { category: "Unsure", cache: false };
+      // Network error / "Failed to fetch": transient, back off and retry.
+      const delay = 1500 * (attempt + 1);
+      console.warn("UNiBOX bg: fetch threw", String(e), "- retry in", delay, "ms");
+      await sleep(delay);
+      continue;
     }
 
-    // Rate limited: back off and retry (respect Retry-After when present).
-    if (resp.status === 429) {
+    // Transient server states: 429 (rate limit) and 5xx (overloaded / down).
+    // Back off and retry (respect Retry-After when present).
+    if (resp.status === 429 || resp.status >= 500) {
       const ra = parseInt(resp.headers.get("retry-after"), 10);
       const delay = ra > 0 ? ra * 1000 : 1500 * (attempt + 1);
-      console.warn("UNiBOX bg: 429 rate-limited, retry in", delay, "ms");
+      console.warn("UNiBOX bg: transient", resp.status, "- retry in", delay, "ms");
       await sleep(delay);
       continue;
     }
