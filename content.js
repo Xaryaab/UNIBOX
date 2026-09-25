@@ -220,7 +220,7 @@
   function ensureBar() {
     let bar = document.getElementById(BAR_ID);
     if (bar) return bar;
-    const container = observed || findContainer();
+    const container = findContainer();
     if (!container) return null;
     bar = document.createElement("div");
     bar.id = BAR_ID;
@@ -358,7 +358,7 @@
   }
 
   function scan() {
-    const root = observed || findContainer() || document;
+    const root = findContainer() || document;
     const rows = Array.from(root.querySelectorAll(S.row)).filter(inActiveView);
     const data = rows.map(function (row) {
       const r = extractRow(row);
@@ -405,21 +405,17 @@
     return null;
   }
 
-  // Attach the observer to the current container. Gmail can swap in a new
-  // main-pane node when you switch labels (Inbox -> Sent), which detaches
-  // the old node and silently kills an observer bound to it. So re-resolve
-  // the container and re-bind whenever it has changed.
+  // Observe the whole document body -- NOT just the current inbox container.
+  // Gmail replaces the main-pane / list node on pagination (51-100) and label
+  // switches, which detaches and silently kills an observer bound to it, and
+  // pagination doesn't always fire a hashchange. Body is stable; the debounced
+  // scan re-targets the live container each time. We only observe, never
+  // mutate. Idempotent decoration keeps this from looping.
   let observer = null;
-  let observed = null;
   function ensureObserving() {
-    const container = findContainer();
-    if (container && container !== observed) {
-      if (observer) observer.disconnect();
-      observer = new MutationObserver(scheduleScan);
-      // We only observe -- never mutate.
-      observer.observe(container, { childList: true, subtree: true });
-      observed = container;
-    }
+    if (observer) return;
+    observer = new MutationObserver(scheduleScan);
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   function start() {
