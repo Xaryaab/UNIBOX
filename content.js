@@ -49,7 +49,18 @@
     fresh.forEach(function (e) { loggedIds.add(e.id); });
     store.get([UNSURE_LOG_KEY], function (res) {
       const log = res[UNSURE_LOG_KEY] || [];
-      store.set({ [UNSURE_LOG_KEY]: log.concat(fresh) });
+      store.set({ [UNSURE_LOG_KEY]: log.concat(fresh) }, dumpUnsureLog);
+    });
+  }
+
+  // The Gmail page's own console can't read chrome.storage (that API lives
+  // only in this content script's isolated world), so we print the stored
+  // Unsure log here on load and whenever it grows. Look for "UNiBOX unsureLog".
+  function dumpUnsureLog() {
+    if (!store) return;
+    store.get([UNSURE_LOG_KEY], function (res) {
+      const log = res[UNSURE_LOG_KEY] || [];
+      console.log("UNiBOX unsureLog (" + log.length + " entries):", log);
     });
   }
 
@@ -199,8 +210,12 @@
     });
 
     console.log("UNiBOX loaded - watching inbox for changes");
-    // Seed the dedup set from any existing log, then do the first scan.
-    seedLoggedIds(scan);
+    // Seed the dedup set from any existing log, then do the first scan and
+    // print whatever is already in the Unsure log.
+    seedLoggedIds(function () {
+      scan();
+      dumpUnsureLog();
+    });
   }
 
   start();
