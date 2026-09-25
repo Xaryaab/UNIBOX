@@ -71,6 +71,10 @@ async function classifyWithLLM(row) {
   // Not configured yet -> fall back to Unsure, and tell content.js NOT to
   // cache it (so it retries once a key/endpoint is set).
   if (!s.apiKey || !s.endpoint) {
+    console.warn("UNiBOX bg: not configured -", {
+      hasKey: !!s.apiKey,
+      hasEndpoint: !!s.endpoint,
+    });
     return { category: "Unsure", cache: false };
   }
 
@@ -89,17 +93,24 @@ async function classifyWithLLM(row) {
       response_format: { type: "json_object" },
     }));
     if (!resp.ok) {
+      const body1 = await resp.text();
+      console.warn("UNiBOX bg: attempt 1 failed", resp.status, body1.slice(0, 300));
       resp = await callApi(s, base);
     }
     if (!resp.ok) {
+      const body2 = await resp.text();
+      console.warn("UNiBOX bg: attempt 2 failed", resp.status, body2.slice(0, 300));
       // Rate limit / auth / server error: silent Unsure, allow retry later.
       return { category: "Unsure", cache: false };
     }
 
     const data = await resp.json();
-    return { category: parseCategory(data), cache: true };
+    const category = parseCategory(data);
+    console.log("UNiBOX bg: classified", { subject: row.subject, category });
+    return { category, cache: true };
   } catch (e) {
     // Network error etc.: silent Unsure, allow retry later.
+    console.warn("UNiBOX bg: request threw", String(e));
     return { category: "Unsure", cache: false };
   }
 }
@@ -117,6 +128,7 @@ function callApi(s, body) {
 
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (msg && msg.type === "UNIBOX_CLASSIFY" && msg.row) {
+    console.log("UNiBOX bg: request received for", msg.row.subject);
     classifyWithLLM(msg.row).then(sendResponse);
     return true; // keep the message channel open for the async reply
   }
