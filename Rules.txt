@@ -1,9 +1,20 @@
 Priority order: check top to bottom, first match wins.
 
-0. Trusted senders (highest priority, override every rule below)
-   sender email = placement.isb@nu.edu.pk        -> Placement
-   sender email = amir.rehman@nu.edu.pk          -> Announcement
-   sender email = studentaffairs.isb@nu.edu.pk   -> Announcement
+0. Trusted senders (highest priority, override every rule below,
+   regardless of subject)
+
+   These senders mail through batch mailing lists, so the address shown
+   in the inbox list is the list (Batch25@ / BSCS25@isb.nu.edu.pk) and the
+   real address is in reply-to, which is NOT visible without opening the
+   mail. So match on the display NAME shown in the list; keep the direct
+   addresses as a fallback.
+
+   sender name contains "Placement @ One Stop" / "One Stop Islamabad"
+     OR sender email = placement.isb@nu.edu.pk       -> Placement
+   sender name contains "Student Affairs"
+     OR sender email = studentaffairs.isb@nu.edu.pk  -> Announcement
+   sender name contains "Amir Rehman"
+     OR sender email = amir.rehman@nu.edu.pk         -> Announcement
 
 1. Hackathon / Competition
    subject contains "Competition", "Hackathon", "Hack Summer", "Build with AI"

@@ -40,14 +40,40 @@
   }
 
   // --- rule 0: trusted senders (highest priority) --------------------------
-  // Mail from these addresses is routed by SENDER alone and overrides every
-  // subject-based rule below -- e.g. an announcement that happens to mention
-  // "Competition" still lands in Announcement, not Hackathon.
-  var SENDER_ROUTES = {
+  // Routed by SENDER identity alone; overrides every subject-based rule below
+  // (an announcement that mentions "Competition" still lands in Announcement).
+  //
+  // These senders mail through batch mailing lists, so the address visible in
+  // the inbox list is the list itself (Batch25@ / BSCS25@isb.nu.edu.pk) and
+  // the real address (placement.isb@, studentaffairs.isb@, amir.rehman@) sits
+  // in reply-to, which is only visible after opening the message -- and UNiBOX
+  // never opens anything. So we match on the display NAME shown in the list,
+  // with the direct addresses kept as a fallback for when they send directly.
+  var SENDER_EMAIL_ROUTES = {
     "placement.isb@nu.edu.pk": "Placement",
     "amir.rehman@nu.edu.pk": "Announcement",
     "studentaffairs.isb@nu.edu.pk": "Announcement",
   };
+  // Display-name substrings (matched case-insensitively). Keep these specific
+  // to the actual senders so batch-list mail from others isn't swept in.
+  var SENDER_NAME_ROUTES = [
+    { match: "placement @ one stop", category: "Placement" },
+    { match: "one stop islamabad", category: "Placement" },
+    { match: "student affairs", category: "Announcement" },
+    { match: "amir rehman", category: "Announcement" },
+  ];
+
+  function routeBySender(email, name) {
+    var byEmail = SENDER_EMAIL_ROUTES[norm(email)];
+    if (byEmail) return byEmail;
+    var lname = norm(name);
+    for (var i = 0; i < SENDER_NAME_ROUTES.length; i++) {
+      if (lname.indexOf(SENDER_NAME_ROUTES[i].match) !== -1) {
+        return SENDER_NAME_ROUTES[i].category;
+      }
+    }
+    return null;
+  }
 
   // --- rule 1: Hackathon ---------------------------------------------------
   // Hard keywords: a clear match here IS a Hackathon.
@@ -89,7 +115,7 @@
     var subject = row.subject || "";
 
     // 0. Trusted senders win over everything else.
-    var routed = SENDER_ROUTES[norm(email)];
+    var routed = routeBySender(email, name);
     if (routed) {
       return { category: routed, reason: null };
     }
