@@ -1,0 +1,33 @@
+Priority order: check top to bottom, first match wins.
+
+1. Hackathon / Competition
+   subject contains "Competition", "Hackathon", "Hack Summer", "Build with AI"
+     -> Hackathon
+   ELSE IF sender or subject loosely suggests a competition/build event
+   but no clear keyword match
+     -> send to LLM for a Hackathon / Not-Hackathon decision
+        (LLM sees full sender + subject + snippet)
+
+2. Academics
+   sender domain = classroom.google.com
+   OR sender display name contains "(Classroom)"
+     -> Academic
+
+3. Announcement
+   sender email = studentaffairs.isb@nu.edu.pk
+   OR sender email = amir.rehman@nu.edu.pk
+   OR subject contains "Announcement" or "Important Announcement"
+     -> Announcement
+
+4. Placement Offer
+   sender email = placement.isb@nu.edu.pk
+   OR subject = "A Weekend worth spending"
+   OR subject = "Level up your tech skills"
+     -> Placement
+   ELSE IF subject contains "Job", "Internship", "Opportunities", "Vacancy Announcement"
+     -> Placement
+   ELSE IF (subject contains "Manager" OR "Paid") AND sender email = placement.isb@nu.edu.pk
+     -> Placement
+
+5. Everything else
+     -> Unsure
