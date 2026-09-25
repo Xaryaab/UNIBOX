@@ -218,11 +218,19 @@
   // Inject the bar once, at the top of the inbox pane. If it already exists
   // (e.g. from a previous render), reuse it -- never duplicate.
   function ensureBar() {
-    let bar = document.getElementById(BAR_ID);
-    if (bar) return bar;
     const container = findContainer();
     if (!container) return null;
-    bar = document.createElement("div");
+
+    // Reuse the bar only if it already sits in the CURRENT container -- then
+    // its chip click handlers are live for this view. If Gmail swapped the
+    // container (pagination, label switch), the old bar is stale and its chips
+    // do nothing, so remove any bars and build a fresh one here. currentFilter
+    // and the <body> filter attribute persist, so the filter state is kept.
+    const existing = document.getElementById(BAR_ID);
+    if (existing && existing.parentElement === container) return existing;
+    document.querySelectorAll('[id="' + BAR_ID + '"]').forEach(function (b) { b.remove(); });
+
+    const bar = document.createElement("div");
     bar.id = BAR_ID;
     const brand = document.createElement("span");
     brand.className = "unibox-brand";
@@ -398,6 +406,15 @@
   }
 
   function findContainer() {
+    // Prefer a container that is actually on screen. Gmail can keep a hidden
+    // cached main-pane around, and we must not attach the bar to that.
+    for (const sel of S.inboxContainer) {
+      const els = document.querySelectorAll(sel);
+      for (const el of els) {
+        if (el.getClientRects().length > 0) return el;
+      }
+    }
+    // Fallback: first match even if not currently visible.
     for (const sel of S.inboxContainer) {
       const el = document.querySelector(sel);
       if (el) return el;
