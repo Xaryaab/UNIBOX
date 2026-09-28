@@ -125,6 +125,29 @@ async function init() {
 
 const HARVEST_KEY = "harvest";
 const HARVEST_FLAG = "harvestEnabled";
+const SENDER_LABELS_KEY = "senderLabels";
+const LABEL_PROGRESS_KEY = "senderLabelProgress";
+
+let progressTimer = null;
+function pollLabelProgress() {
+  const box = $("label-progress");
+  function tick() {
+    chrome.storage.local.get([LABEL_PROGRESS_KEY], function (res) {
+      const p = res[LABEL_PROGRESS_KEY];
+      if (!p) { box.hidden = true; return; }
+      box.hidden = false;
+      box.textContent = (p.running ? "Labelling " : "Labelled ") + p.done + " / " + p.total + (p.running ? "…" : " (done)");
+      if (p.running) {
+        progressTimer = setTimeout(tick, 1000);
+      } else {
+        progressTimer = null;
+        refreshHarvestStats();
+      }
+    });
+  }
+  if (progressTimer) clearTimeout(progressTimer);
+  tick();
+}
 
 function download(filename, text, type) {
   const blob = new Blob([text], { type: type || "text/plain" });
@@ -164,12 +187,13 @@ function buildRollup(harvest) {
     const g = groups[k];
     const topCat = Object.keys(g.cats).sort(function (a, b) { return g.cats[b] - g.cats[a]; })[0] || "Unsure";
     return {
+      key: k, // grouping key; matches senderLabels
       sender: g.name || k,
       emails: Object.keys(g.emails).join("; "),
       domains: Object.keys(g.domains).join("; "),
       count: g.count,
       currentTopCategory: topCat,
-      proposedCategory: "", // you (or the LLM step) fill this in
+      proposedCategory: "", // filled from senderLabels (LLM) below
       samples: g.samples.join(" | "),
     };
   }).sort(function (a, b) { return b.count - a.count; });
@@ -211,6 +235,11 @@ function initHarvester() {
   });
   refreshHarvestStats();
 
+  // If a labelling run is in progress (or just finished), reflect it.
+  chrome.storage.local.get([LABEL_PROGRESS_KEY], function (res) {
+    if (res[LABEL_PROGRESS_KEY]) pollLabelProgress();
+  });
+
   $("harvest").addEventListener("change", function () {
     chrome.storage.local.set({ [HARVEST_FLAG]: $("harvest").checked }, function () {
       setStatus($("harvest").checked ? "Collecting. Scroll your inbox." : "Collection paused.");
@@ -218,11 +247,28 @@ function initHarvester() {
   });
 
   $("dl-rollup").addEventListener("click", function () {
+    chrome.storage.local.get([HARVEST_KEY, SENDER_LABELS_KEY], function (res) {
+      const harvest = res[HARVEST_KEY] || {};
+      if (!Object.keys(harvest).length) return setStatus("Nothing harvested yet.", false);
+      const labels = res[SENDER_LABELS_KEY] || {};
+      const rollup = buildRollup(harvest);
+      rollup.forEach(function (row) { row.proposedCategory = labels[row.key] || ""; });
+      download("unibox-sender-rollup.csv", rollupToCsv(rollup), "text/csv");
+      setStatus("Rollup downloaded.");
+    });
+  });
+
+  $("auto-label").addEventListener("click", function () {
     chrome.storage.local.get([HARVEST_KEY], function (res) {
       const harvest = res[HARVEST_KEY] || {};
       if (!Object.keys(harvest).length) return setStatus("Nothing harvested yet.", false);
-      download("unibox-sender-rollup.csv", rollupToCsv(buildRollup(harvest)), "text/csv");
-      setStatus("Rollup downloaded.");
+      const senders = buildRollup(harvest).map(function (r) {
+        return { key: r.key, sender: r.sender, emails: r.emails, domains: r.domains, samples: r.samples };
+      });
+      chrome.runtime.sendMessage({ type: "UNIBOX_LABEL_SENDERS", senders: senders }, function () {
+        setStatus("Labelling " + senders.length + " senders…");
+        pollLabelProgress();
+      });
     });
   });
 

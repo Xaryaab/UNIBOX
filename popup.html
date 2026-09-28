@@ -123,13 +123,18 @@
     </label>
     <div id="harvest-stats" class="muted">Harvested: 0 emails, 0 senders</div>
     <div class="train-actions">
+      <button id="auto-label">Auto-label senders (LLM)</button>
+    </div>
+    <div id="label-progress" class="muted" hidden></div>
+    <div class="train-actions">
       <button id="dl-rollup">Sender rollup (CSV)</button>
       <button id="dl-raw">Raw (JSON)</button>
       <button id="clear-harvest">Clear</button>
     </div>
     <div class="muted hint2">
-      Turn on, then scroll through your inbox to gather rows. The rollup groups
-      them by sender for labelling.
+      Turn on, then scroll through your inbox to gather rows. Auto-label asks
+      the LLM for a category per sender; the rollup CSV has a proposedCategory
+      column for you to review and correct.
     </div>
   </div>
 

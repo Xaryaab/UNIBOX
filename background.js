@@ -80,15 +80,46 @@ let queue = Promise.resolve();
 let lastCallAt = 0;
 
 function classifyWithLLM(row) {
-  const run = queue.then(function () { return doClassify(row); });
+  return enqueue(buildMessages(row), row.subject);
+}
+
+// Label a whole SENDER (not one email) from its display name, addresses, and
+// a few example subjects -- used by the training-data auto-labeller.
+function buildSenderMessages(sd) {
+  const system =
+    "You label an email SENDER into exactly one category for a university " +
+    "student, judging by the sender and example subject lines. Allowed " +
+    "categories: Hackathon, Academic, Announcement, Placement, Unsure. Use " +
+    "Unsure only for senders that fit none (e.g. generic promotions / " +
+    'newsletters). Respond with ONLY {"category":"<one>"} and nothing else.';
+  const subjects = (sd.samples || "")
+    .split(" | ").filter(Boolean).map(function (x) { return "- " + x; }).join("\n");
+  const user =
+    "Sender: " + (sd.sender || "") + "\n" +
+    "Emails: " + (sd.emails || "") + "\n" +
+    "Domains: " + (sd.domains || "") + "\n" +
+    "Example subjects:\n" + subjects;
+  return [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ];
+}
+
+function classifySender(sd) {
+  return enqueue(buildSenderMessages(sd), "sender:" + sd.sender);
+}
+
+// Serialize every request (email or sender) through the one throttled queue.
+function enqueue(messages, label) {
+  const run = queue.then(function () { return doClassify(messages, label); });
   queue = run.catch(function () {}); // one failure must not break the chain
   return run;
 }
 
-async function doClassify(row) {
+async function doClassify(messages, label) {
   const s = await getSettings();
 
-  // Not configured yet -> fall back to Unsure, and tell content.js NOT to
+  // Not configured yet -> fall back to Unsure, and tell the caller NOT to
   // cache it (so it retries once a key/endpoint is set).
   if (!s.apiKey || !s.endpoint) {
     console.warn("UNiBOX bg: not configured -", {
@@ -100,7 +131,7 @@ async function doClassify(row) {
 
   const base = {
     model: s.model || "openai/gpt-4o-mini",
-    messages: buildMessages(row),
+    messages: messages,
     temperature: 0,
   };
   let useFormat = true; // structured output; dropped if the model rejects it
@@ -155,7 +186,7 @@ async function doClassify(row) {
 
     const data = await resp.json();
     const category = parseCategory(data);
-    console.log("UNiBOX bg: classified", { subject: row.subject, category });
+    console.log("UNiBOX bg: classified", { label: label, category });
     return { category, cache: true };
   }
 
@@ -174,10 +205,65 @@ function callApi(s, body) {
   });
 }
 
+// --- Sender auto-labelling (training-data step) -----------------------------
+const SENDER_LABELS_KEY = "senderLabels"; // { senderKey: category }
+const LABEL_PROGRESS_KEY = "senderLabelProgress"; // { total, done, running }
+let labeling = false;
+
+function getLocal(keys) {
+  return new Promise(function (r) { chrome.storage.local.get(keys, function (res) { r(res); }); });
+}
+function setLocal(obj) {
+  return new Promise(function (r) { chrome.storage.local.set(obj, function () { r(); }); });
+}
+
+// Label each sender via the LLM, one per queue slot, saving as we go so the
+// run is resumable: senders already labelled are skipped. Progress lives in
+// storage so the popup can show it even after it's closed and reopened.
+async function labelSenders(senders) {
+  if (labeling) return;
+  labeling = true;
+  try {
+    const labels = (await getLocal([SENDER_LABELS_KEY]))[SENDER_LABELS_KEY] || {};
+    const total = senders.length;
+    let done = senders.reduce(function (n, sd) { return n + (labels[sd.key] ? 1 : 0); }, 0);
+    await setLocal({ [LABEL_PROGRESS_KEY]: { total: total, done: done, running: true } });
+
+    for (let i = 0; i < senders.length; i++) {
+      const sd = senders[i];
+      if (labels[sd.key]) continue; // resume: already labelled
+      let category = "Unsure";
+      try {
+        const res = await classifySender(sd);
+        category = res.category;
+      } catch (e) {
+        category = "Unsure";
+      }
+      labels[sd.key] = category;
+      done += 1;
+      await setLocal({
+        [SENDER_LABELS_KEY]: labels,
+        [LABEL_PROGRESS_KEY]: { total: total, done: done, running: true },
+      });
+    }
+    await setLocal({ [LABEL_PROGRESS_KEY]: { total: total, done: done, running: false } });
+  } finally {
+    labeling = false;
+  }
+}
+
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
-  if (msg && msg.type === "UNIBOX_CLASSIFY" && msg.row) {
+  if (!msg) return;
+  if (msg.type === "UNIBOX_CLASSIFY" && msg.row) {
     console.log("UNiBOX bg: request received for", msg.row.subject);
     classifyWithLLM(msg.row).then(sendResponse);
     return true; // keep the message channel open for the async reply
+  }
+  if (msg.type === "UNIBOX_LABEL_SENDERS" && Array.isArray(msg.senders)) {
+    // Fire-and-forget: the loop reports progress through storage.
+    const wasRunning = labeling;
+    labelSenders(msg.senders);
+    sendResponse({ started: !wasRunning, alreadyRunning: wasRunning });
+    return false;
   }
 });
