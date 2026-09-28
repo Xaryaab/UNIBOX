@@ -252,7 +252,14 @@ function initHarvester() {
       if (!Object.keys(harvest).length) return setStatus("Nothing harvested yet.", false);
       const labels = res[SENDER_LABELS_KEY] || {};
       const rollup = buildRollup(harvest);
-      rollup.forEach(function (row) { row.proposedCategory = labels[row.key] || ""; });
+      // Pre-fill proposedCategory so you only relabel the leftovers: prefer a
+      // confident (non-Unsure) LLM label, else fall back to what the rules
+      // already decided (currentTopCategory). Senders still at Unsure are the
+      // ones to categorize by hand.
+      rollup.forEach(function (row) {
+        const llm = labels[row.key];
+        row.proposedCategory = llm && llm !== "Unsure" ? llm : row.currentTopCategory;
+      });
       download("unibox-sender-rollup.csv", rollupToCsv(rollup), "text/csv");
       setStatus("Rollup downloaded.");
     });
