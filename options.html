@@ -51,16 +51,16 @@
   </select>
 
   <label for="endpoint">API endpoint (chat completions URL)</label>
-  <input id="endpoint" type="text" placeholder="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" />
+  <input id="endpoint" type="text" placeholder="https://api.groq.com/openai/v1/chat/completions" />
   <div class="hint">
     The full chat-completions URL. Its host must also be listed in
     <code>host_permissions</code> in manifest.json (currently
-    <code>https://generativelanguage.googleapis.com/*</code>). For a free
-    Google AI Studio key, use Gemini's OpenAI-compatible endpoint above.
+    <code>https://api.groq.com/*</code>). For a Groq key, use the endpoint
+    shown above.
   </div>
 
   <label for="model">Model</label>
-  <input id="model" type="text" placeholder="gemini-3.8-flash" />
+  <input id="model" type="text" placeholder="llama-3.3-70b-versatile" />
 
   <label for="apiKey">API key</label>
   <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />

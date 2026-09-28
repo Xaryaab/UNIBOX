@@ -65,7 +65,7 @@ function parseCategory(data) {
   }
 }
 
-const MIN_GAP_MS = 6000; // spacing between calls (~10/min; safe even on 10-RPM free tiers)
+const MIN_GAP_MS = 2500; // spacing between calls (~24/min; safe under Groq's free 30 RPM)
 const MAX_RETRIES = 3; // retries on transient failures (429, 5xx, network)
 const BACKOFF_STEP_MS = 2000; // base backoff; grows per attempt
 
