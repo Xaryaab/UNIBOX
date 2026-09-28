@@ -1,10 +1,10 @@
 // UNiBOX - toolbar popup. Shows live per-category counts from the active
 // Gmail tab, lets you filter from here, and exposes settings + maintenance.
 
-const CATEGORIES = ["All", "Hackathon", "Academic", "Announcement", "Placement", "Unsure"];
+const CATEGORIES = ["All", "Hackathon", "Academic", "Announcement", "Placement", "Others"];
 const COLORVAR = {
   All: "--all", Hackathon: "--hackathon", Academic: "--academic",
-  Announcement: "--announcement", Placement: "--placement", Unsure: "--unsure",
+  Announcement: "--announcement", Placement: "--placement", Others: "--others",
 };
 
 function $(id) { return document.getElementById(id); }
@@ -179,13 +179,13 @@ function buildRollup(harvest) {
     g.count += 1;
     if (r.senderEmail) g.emails[r.senderEmail] = 1;
     if (r.domain) g.domains[r.domain] = 1;
-    const c = r.ruleCategory || "Unsure";
+    const c = r.ruleCategory || "Others";
     g.cats[c] = (g.cats[c] || 0) + 1;
     if (g.samples.length < 3 && r.subject) g.samples.push(r.subject);
   });
   return Object.keys(groups).map(function (k) {
     const g = groups[k];
-    const topCat = Object.keys(g.cats).sort(function (a, b) { return g.cats[b] - g.cats[a]; })[0] || "Unsure";
+    const topCat = Object.keys(g.cats).sort(function (a, b) { return g.cats[b] - g.cats[a]; })[0] || "Others";
     return {
       key: k, // grouping key; matches senderLabels
       sender: g.name || k,
@@ -253,12 +253,12 @@ function initHarvester() {
       const labels = res[SENDER_LABELS_KEY] || {};
       const rollup = buildRollup(harvest);
       // Pre-fill proposedCategory so you only relabel the leftovers: prefer a
-      // confident (non-Unsure) LLM label, else fall back to what the rules
-      // already decided (currentTopCategory). Senders still at Unsure are the
+      // confident (non-Others) LLM label, else fall back to what the rules
+      // already decided (currentTopCategory). Senders still at Others are the
       // ones to categorize by hand.
       rollup.forEach(function (row) {
         const llm = labels[row.key];
-        row.proposedCategory = llm && llm !== "Unsure" ? llm : row.currentTopCategory;
+        row.proposedCategory = llm && llm !== "Others" ? llm : row.currentTopCategory;
       });
       download("unibox-sender-rollup.csv", rollupToCsv(rollup), "text/csv");
       setStatus("Rollup downloaded.");

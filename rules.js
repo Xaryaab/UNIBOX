@@ -1,18 +1,17 @@
 // UNiBOX - Stage 4: classification rules (implements rules.txt).
 //
 // Priority order, top to bottom, first match wins:
-//   1. Hackathon  2. Academic  3. Announcement  4. Placement  5. Unsure
+//   1. Hackathon  2. Academic  3. Announcement  4. Placement  5. Others
 //
 // classify(row) takes { senderName, senderEmail, subject, snippet } and
 // returns an object:
-//   { category, reason }
-//     category: "Hackathon" | "Academic" | "Announcement" | "Placement" | "Unsure"
+//   { category, reason, matched }
+//     category: "Hackathon" | "Academic" | "Announcement" | "Placement" | "Others"
 //     reason:   null in every case EXCEPT the Hackathon LLM-fallback
 //               placeholder, where it is "possible-hackathon".
-// (rules.txt speaks of returning a single category; we return an object so
-//  the placeholder reason can travel to the Unsure log. Callers that only
-//  want the label read `.category`.)
-//
+//     matched:  true if a rule placed the row; false if nothing matched and it
+//               defaulted to Others (these are the rows worth an LLM look).
+// "Others" is the catch-all bucket -- promotions, DMs, anything no rule owns.
 // All matching is case-insensitive.
 
 (function () {
@@ -141,40 +140,40 @@
       : [{ name: name, email: email }];
     var routed = routeBySender(participants);
     if (routed) {
-      return { category: routed, reason: null };
+      return { category: routed, reason: null, matched: true };
     }
 
     // 1. Hackathon / Competition -- hard keyword match wins outright.
     if (containsAny(subject, HACK_SUBJECT_KEYWORDS)) {
-      return { category: "Hackathon", reason: null };
+      return { category: "Hackathon", reason: null, matched: true };
     }
 
     // 2. Academics
     if (domainOf(email) === "classroom.google.com" ||
         containsAny(name, ["(Classroom)"])) {
-      return { category: "Academic", reason: null };
+      return { category: "Academic", reason: null, matched: true };
     }
 
     // 3. Announcement
     if (ANNOUNCEMENT_SENDERS.some(function (s) { return equals(email, s); }) ||
         containsAny(subject, ANNOUNCEMENT_SUBJECTS)) {
-      return { category: "Announcement", reason: null };
+      return { category: "Announcement", reason: null, matched: true };
     }
 
     // 4. Placement Offer
     if (equals(email, PLACEMENT_SENDER) ||
         PLACEMENT_EXACT_SUBJECTS.some(function (s) { return equals(subject, s); })) {
-      return { category: "Placement", reason: null };
+      return { category: "Placement", reason: null, matched: true };
     }
     if (containsAny(subject, PLACEMENT_SUBJECT_KEYWORDS)) {
-      return { category: "Placement", reason: null };
+      return { category: "Placement", reason: null, matched: true };
     }
     if (containsAny(subject, PLACEMENT_SENDER_SUBJECT_KEYWORDS) &&
         equals(email, PLACEMENT_SENDER)) {
-      return { category: "Placement", reason: null };
+      return { category: "Placement", reason: null, matched: true };
     }
 
-    // 5. Everything else -> Unsure.
+    // 5. Everything else -> Others (nothing matched: matched=false).
     //
     // ORDERING NOTE: rules.txt nests the "loosely suggests a hackathon" LLM
     // branch inside rule 1, i.e. at top priority. Applied literally there, a
@@ -183,12 +182,11 @@
     // cleanly, mislabeling them as possible-hackathon. Since the real LLM step
     // is meant to catch genuinely AMBIGUOUS mail -- the kind no hard rule owns
     // -- the soft check is applied here, only to rows that would otherwise be
-    // plain Unsure. This is the closest faithful stand-in for the LLM until
-    // Stage 6; tell me if you'd rather it run at strict rule-1 priority.
+    // plain Others.
     if (looselyHackathon(name, email, subject)) {
-      return { category: "Unsure", reason: "possible-hackathon" };
+      return { category: "Others", reason: "possible-hackathon", matched: false };
     }
-    return { category: "Unsure", reason: null };
+    return { category: "Others", reason: null, matched: false };
   }
 
   window.UNIBOX_CLASSIFY = classify;

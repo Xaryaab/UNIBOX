@@ -143,7 +143,7 @@
       subject: d.subject,
       snippet: d.snippet,
       reason: d.reason || null, // "possible-hackathon" or null
-      ruleCategory: "Unsure", // what rules.js decided (always Unsure here)
+      ruleCategory: d.ruleCategory || "Others", // what rules.js decided (default Others)
       llmCategory: llmCategory != null ? llmCategory : null, // what the LLM said
       timestamp: new Date().toISOString(),
     };
@@ -226,7 +226,7 @@
   // Filter bar + category dots (Stage 5)
   // ---------------------------------------------------------------------------
   // "All" first (default, shows everything); the rest match rules.js output.
-  const CATEGORIES = ["All", "Hackathon", "Academic", "Announcement", "Placement", "Unsure"];
+  const CATEGORIES = ["All", "Hackathon", "Academic", "Announcement", "Placement", "Others"];
   const BAR_ID = "unibox-bar";
 
   // Which chip is active. Kept in a variable (and mirrored onto <body> as an
@@ -236,7 +236,7 @@
 
   // Latest per-category counts, so the toolbar popup can show live numbers.
   let lastCounts = {
-    All: 0, Hackathon: 0, Academic: 0, Announcement: 0, Placement: 0, Unsure: 0,
+    All: 0, Hackathon: 0, Academic: 0, Announcement: 0, Placement: 0, Others: 0,
   };
 
   function setFilter(cat) {
@@ -435,12 +435,12 @@
       const r = extractRow(row);
       const c = classify(r);
       r.ruleCategory = c.category; // what rules.js decided
+      r.matched = c.matched; // did a rule place it, or is it a default to Others?
       r.reason = c.reason; // "possible-hackathon" or null
-      // If rules were Unsure but the LLM has already resolved this row, use
-      // that cached decision as the displayed category.
+      // If no rule matched but the LLM has already resolved this row, use that
+      // cached decision as the displayed category.
       r.llmCategory = llmCache[r.id] || null;
-      r.category =
-        c.category === "Unsure" && r.llmCategory ? r.llmCategory : c.category;
+      r.category = !c.matched && r.llmCategory ? r.llmCategory : c.category;
       decorateRow(row, r.category); // dot + data-unibox-cat for filtering
       return r;
     });
@@ -453,10 +453,10 @@
     // Log rows for training data when the harvester is enabled.
     harvestRows(data);
 
-    // Rows rules.js couldn't place: log them (recording the LLM's decision if
-    // we have one) and, if still unresolved, send them to the LLM once.
+    // Rows no rule could place: log them (recording the LLM's decision if we
+    // have one) and, if still unresolved, send them to the LLM once.
     data.forEach(function (d) {
-      if (d.ruleCategory !== "Unsure") return;
+      if (d.matched) return;
       recordUnsure(makeUnsureEntry(d, d.llmCategory));
       if (!llmCache[d.id]) requestLLM(d);
     });

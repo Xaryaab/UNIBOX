@@ -7,12 +7,12 @@
 //
 // content.js sends { type: "UNIBOX_CLASSIFY", row: {senderName, senderEmail,
 // subject, snippet} }. We reply with { category, cache }:
-//   category: one of the five allowed labels (Unsure on any failure)
+//   category: one of the five allowed labels (Others on any failure)
 //   cache:    true only for a genuine LLM answer; false for "not configured"
 //             or an error, so content.js can retry later instead of caching a
 //             fallback.
 
-const ALLOWED = ["Hackathon", "Academic", "Announcement", "Placement", "Unsure"];
+const ALLOWED = ["Hackathon", "Academic", "Announcement", "Placement", "Others"];
 const SETTINGS_KEY = "settings";
 
 function getSettings() {
@@ -29,7 +29,8 @@ function buildMessages(row) {
   const system =
     "You classify a university student's incoming email into exactly one " +
     "category. Allowed categories: Hackathon, Academic, Announcement, " +
-    "Placement, Unsure. Choose Unsure only if you genuinely cannot tell. " +
+    "Placement, Others. Use Others for anything that fits none of the first " +
+    "four (promotions, newsletters, personal DMs, etc.). " +
     'Respond with ONLY a JSON object of the exact form {"category":"<one>"} ' +
     "where <one> is one of the five allowed words. No prose, no explanation.";
   const user =
@@ -43,13 +44,13 @@ function buildMessages(row) {
   ];
 }
 
-// Pull a valid category out of an OpenAI-compatible response, or "Unsure".
+// Pull a valid category out of an OpenAI-compatible response, or "Others".
 function parseCategory(data) {
   try {
     const content =
       data && data.choices && data.choices[0] &&
       data.choices[0].message && data.choices[0].message.content;
-    if (!content) return "Unsure";
+    if (!content) return "Others";
     let obj;
     try {
       obj = JSON.parse(content);
@@ -59,9 +60,9 @@ function parseCategory(data) {
       obj = m ? JSON.parse(m[0]) : null;
     }
     const cat = obj && obj.category;
-    return ALLOWED.indexOf(cat) !== -1 ? cat : "Unsure";
+    return ALLOWED.indexOf(cat) !== -1 ? cat : "Others";
   } catch (e) {
-    return "Unsure";
+    return "Others";
   }
 }
 
@@ -73,7 +74,7 @@ function sleep(ms) {
   return new Promise(function (r) { setTimeout(r, ms); });
 }
 
-// Serialize requests through a single chain so a burst of Unsure rows doesn't
+// Serialize requests through a single chain so a burst of Others rows doesn't
 // hit the provider all at once -- free models rate-limit hard. Each row waits
 // its turn, and calls are spaced by MIN_GAP_MS.
 let queue = Promise.resolve();
@@ -89,9 +90,9 @@ function buildSenderMessages(sd) {
   const system =
     "You label an email SENDER into exactly one category for a university " +
     "student, judging by the sender and example subject lines. Allowed " +
-    "categories: Hackathon, Academic, Announcement, Placement, Unsure. Use " +
-    "Unsure only for senders that fit none (e.g. generic promotions / " +
-    'newsletters). Respond with ONLY {"category":"<one>"} and nothing else.';
+    "categories: Hackathon, Academic, Announcement, Placement, Others. Use " +
+    "Others for senders that fit none of the first four (e.g. generic " +
+    'promotions, newsletters, personal DMs). Respond with ONLY {"category":"<one>"} and nothing else.';
   const subjects = (sd.samples || "")
     .split(" | ").filter(Boolean).map(function (x) { return "- " + x; }).join("\n");
   const user =
@@ -119,14 +120,14 @@ function enqueue(messages, label) {
 async function doClassify(messages, label) {
   const s = await getSettings();
 
-  // Not configured yet -> fall back to Unsure, and tell the caller NOT to
+  // Not configured yet -> fall back to Others, and tell the caller NOT to
   // cache it (so it retries once a key/endpoint is set).
   if (!s.apiKey || !s.endpoint) {
     console.warn("UNiBOX bg: not configured -", {
       hasKey: !!s.apiKey,
       hasEndpoint: !!s.endpoint,
     });
-    return { category: "Unsure", cache: false };
+    return { category: "Others", cache: false };
   }
 
   const base = {
@@ -181,7 +182,7 @@ async function doClassify(messages, label) {
     if (!resp.ok) {
       const body = await resp.text();
       console.warn("UNiBOX bg: failed", resp.status, body.slice(0, 300));
-      return { category: "Unsure", cache: false };
+      return { category: "Others", cache: false };
     }
 
     const data = await resp.json();
@@ -191,7 +192,7 @@ async function doClassify(messages, label) {
   }
 
   console.warn("UNiBOX bg: gave up after retries (still rate-limited)");
-  return { category: "Unsure", cache: false };
+  return { category: "Others", cache: false };
 }
 
 function callApi(s, body) {
@@ -232,12 +233,12 @@ async function labelSenders(senders) {
     for (let i = 0; i < senders.length; i++) {
       const sd = senders[i];
       if (labels[sd.key]) continue; // resume: already labelled
-      let category = "Unsure";
+      let category = "Others";
       try {
         const res = await classifySender(sd);
         category = res.category;
       } catch (e) {
-        category = "Unsure";
+        category = "Others";
       }
       labels[sd.key] = category;
       done += 1;

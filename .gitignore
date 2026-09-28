@@ -1,0 +1,10 @@
+# Training data and the generated sender map contain REAL third-party email
+# addresses from your inbox -- keep them out of git for privacy.
+# Regenerate the map locally with:
+#   node tools/generate-rules.js <rollup.csv>
+*.csv
+
+# senderMap.js is tracked as an empty placeholder in the repo; your local,
+# populated copy is kept private via `git update-index --skip-worktree`
+# (so edits to it are ignored). This line documents that intent.
+# senderMap.js

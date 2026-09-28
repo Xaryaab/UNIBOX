@@ -88,7 +88,7 @@
 .unibox-chip[data-cat="Academic"]     { --unibox-color: #1a73e8; }
 .unibox-chip[data-cat="Announcement"] { --unibox-color: #f9ab00; }
 .unibox-chip[data-cat="Placement"]    { --unibox-color: #188038; }
-.unibox-chip[data-cat="Unsure"]       { --unibox-color: #d93025; }
+.unibox-chip[data-cat="Others"]       { --unibox-color: #80868b; }
 
 /* ---- per-row category dot ---- */
 .unibox-dot {
@@ -106,7 +106,7 @@
 .unibox-dot[data-cat="Academic"]     { background: #1a73e8; }
 .unibox-dot[data-cat="Announcement"] { background: #f9ab00; }
 .unibox-dot[data-cat="Placement"]    { background: #188038; }
-.unibox-dot[data-cat="Unsure"]       { background: #d93025; }
+.unibox-dot[data-cat="Others"]       { background: #80868b; }
 
 /* ---- CSS-only category filter ----
    content.js sets body[data-unibox-filter="<Category>"] when a chip other
@@ -117,4 +117,4 @@ body[data-unibox-filter="Hackathon"]    tr.zA.unibox-row:not([data-unibox-cat="H
 body[data-unibox-filter="Academic"]     tr.zA.unibox-row:not([data-unibox-cat="Academic"])     { display: none; }
 body[data-unibox-filter="Announcement"] tr.zA.unibox-row:not([data-unibox-cat="Announcement"]) { display: none; }
 body[data-unibox-filter="Placement"]    tr.zA.unibox-row:not([data-unibox-cat="Placement"])    { display: none; }
-body[data-unibox-filter="Unsure"]       tr.zA.unibox-row:not([data-unibox-cat="Unsure"])       { display: none; }
+body[data-unibox-filter="Others"]       tr.zA.unibox-row:not([data-unibox-cat="Others"])       { display: none; }

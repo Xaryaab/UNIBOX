@@ -46,4 +46,4 @@ Priority order: check top to bottom, first match wins.
      -> Placement
 
 5. Everything else
-     -> Unsure
+     -> Others   (catch-all: promotions, DMs, anything no rule owns)

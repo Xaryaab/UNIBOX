@@ -11,13 +11,14 @@
 //
 // Ambiguous addresses/domains (a shared mailing list labelled two ways, e.g.
 // Batch25@ used by both Placement and Announcement senders) are LEFT OUT so
-// they fall through to the display-name rules in rules.js. Senders labelled
-// Unsure contribute no rule (they stay Unsure by design).
+// they fall through to the display-name rules in rules.js. "Others" IS mapped
+// (it is a real category now), so known promotions/DMs classify locally and
+// never reach the LLM. Any legacy "Unsure" label is treated as Others.
 
 const fs = require("fs");
 const path = require("path");
 
-const ALLOWED = ["Hackathon", "Academic", "Announcement", "Placement", "Unsure"];
+const ALLOWED = ["Hackathon", "Academic", "Announcement", "Placement", "Others"];
 
 // Minimal RFC-4180-ish CSV parser (handles quotes, escaped quotes, newlines).
 function parseCsv(text) {
@@ -71,18 +72,20 @@ function main() {
   // email -> Set(categories), domain -> Set(categories)
   const emailCats = {};
   const domainCats = {};
-  let labelled = 0, skippedUnsure = 0, badCat = 0;
+  let labelled = 0, badCat = 0;
 
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
-    const cat = (r[col.proposedCategory] || "").trim();
+    let cat = (r[col.proposedCategory] || "").trim();
     if (!cat) continue;
+    if (cat === "Unsure") cat = "Others"; // legacy label -> catch-all
     if (ALLOWED.indexOf(cat) === -1) {
       badCat++;
       console.warn("  ! row " + (i + 1) + ': unknown category "' + cat + '" -- skipped');
       continue;
     }
-    if (cat === "Unsure") { skippedUnsure++; continue; }
+    // Others IS a real category now (promotions/DMs), so it is mapped too --
+    // that way known promotional senders classify locally and never hit the LLM.
     labelled++;
 
     (r[col.emails] || "").split(";").forEach(function (e) {
@@ -137,7 +140,6 @@ function main() {
   console.log("  labelled sender rows: " + labelled);
   console.log("  byEmail entries:      " + Object.keys(byEmail).length + (emailConflicts ? "  (" + emailConflicts + " conflicting addresses left out)" : ""));
   console.log("  byDomain entries:     " + Object.keys(byDomain).length + (domainConflicts ? "  (" + domainConflicts + " conflicting domains left out)" : ""));
-  console.log("  Unsure rows skipped:  " + skippedUnsure);
   if (badCat) console.log("  rows with bad category: " + badCat);
 }
 
