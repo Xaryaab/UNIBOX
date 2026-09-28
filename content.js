@@ -71,15 +71,58 @@
   const pending = new Set();
   const skip = new Set();
 
+  // Training-data harvester. When enabled (toggled from the popup), every
+  // scanned row is logged to chrome.storage.local under HARVEST_KEY, keyed by
+  // row id, so scrolling through the inbox builds a dataset (sender/subject/
+  // snippet + the category the rules assigned) with no bodies opened. The
+  // popup rolls this up by sender for review/labelling. Off by default.
+  const HARVEST_KEY = "harvest";
+  const HARVEST_FLAG = "harvestEnabled";
+  let harvestOn = false;
+  const harvestedIds = new Set();
+
+  function domainOf(email) {
+    const e = (email || "").toLowerCase();
+    const at = e.indexOf("@");
+    return at === -1 ? "" : e.slice(at + 1);
+  }
+
   function seedState(done) {
     if (!store || !contextAlive()) return done();
-    safeGet([UNSURE_LOG_KEY, LLM_CACHE_KEY], function (res) {
+    safeGet([UNSURE_LOG_KEY, LLM_CACHE_KEY, HARVEST_KEY, HARVEST_FLAG], function (res) {
       (res[UNSURE_LOG_KEY] || []).forEach(function (e) {
         if (e.id) loggedUnsure.set(e.id, e.llmCategory != null ? e.llmCategory : null);
       });
       const cache = res[LLM_CACHE_KEY] || {};
       Object.keys(cache).forEach(function (k) { llmCache[k] = cache[k]; });
+      const h = res[HARVEST_KEY] || {};
+      Object.keys(h).forEach(function (k) { harvestedIds.add(k); });
+      harvestOn = !!res[HARVEST_FLAG];
       done();
+    });
+  }
+
+  function harvestRows(data) {
+    if (!harvestOn || !store) return;
+    const fresh = data.filter(function (d) { return !harvestedIds.has(d.id); });
+    if (fresh.length === 0) return;
+    fresh.forEach(function (d) { harvestedIds.add(d.id); });
+    safeGet([HARVEST_KEY], function (res) {
+      const h = res[HARVEST_KEY] || {};
+      fresh.forEach(function (d) {
+        h[d.id] = {
+          id: d.id,
+          senderName: d.senderName || "",
+          senderEmail: d.senderEmail || "",
+          domain: domainOf(d.senderEmail),
+          subject: d.subject || "",
+          snippet: d.snippet || "",
+          ruleCategory: d.ruleCategory,
+          llmCategory: d.llmCategory || null,
+          ts: new Date().toISOString(),
+        };
+      });
+      safeSet({ [HARVEST_KEY]: h });
     });
   }
 
@@ -407,6 +450,9 @@
     ensureBar();
     updateCounts(data);
 
+    // Log rows for training data when the harvester is enabled.
+    harvestRows(data);
+
     // Rows rules.js couldn't place: log them (recording the LLM's decision if
     // we have one) and, if still unresolved, send them to the LLM once.
     data.forEach(function (d) {
@@ -491,6 +537,16 @@
       } else if (msg.type === "UNIBOX_SET_FILTER" && msg.category) {
         setFilter(msg.category);
         sendResponse({ ok: true, filter: currentFilter });
+      }
+    });
+  }
+
+  // React to the popup toggling the harvester on/off without a page reload.
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area === "local" && changes[HARVEST_FLAG]) {
+        harvestOn = !!changes[HARVEST_FLAG].newValue;
+        if (harvestOn) scheduleScan(); // capture what's on screen right away
       }
     });
   }

@@ -117,6 +117,130 @@ async function init() {
       setStatus("LLM cache reset. Reload Gmail to re-classify.");
     });
   });
+
+  initHarvester();
+}
+
+// --- Training-data harvester controls ---------------------------------------
+
+const HARVEST_KEY = "harvest";
+const HARVEST_FLAG = "harvestEnabled";
+
+function download(filename, text, type) {
+  const blob = new Blob([text], { type: type || "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(v) {
+  const s = v == null ? "" : String(v);
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+// Group harvested rows by their sender identity (display name, else email).
+function buildRollup(harvest) {
+  const groups = {};
+  Object.keys(harvest).forEach(function (id) {
+    const r = harvest[id];
+    const key = ((r.senderName || r.senderEmail || "(unknown)") + "").trim().toLowerCase();
+    let g = groups[key];
+    if (!g) {
+      g = groups[key] = { name: r.senderName || "", emails: {}, domains: {}, count: 0, cats: {}, samples: [] };
+    }
+    g.count += 1;
+    if (r.senderEmail) g.emails[r.senderEmail] = 1;
+    if (r.domain) g.domains[r.domain] = 1;
+    const c = r.ruleCategory || "Unsure";
+    g.cats[c] = (g.cats[c] || 0) + 1;
+    if (g.samples.length < 3 && r.subject) g.samples.push(r.subject);
+  });
+  return Object.keys(groups).map(function (k) {
+    const g = groups[k];
+    const topCat = Object.keys(g.cats).sort(function (a, b) { return g.cats[b] - g.cats[a]; })[0] || "Unsure";
+    return {
+      sender: g.name || k,
+      emails: Object.keys(g.emails).join("; "),
+      domains: Object.keys(g.domains).join("; "),
+      count: g.count,
+      currentTopCategory: topCat,
+      proposedCategory: "", // you (or the LLM step) fill this in
+      samples: g.samples.join(" | "),
+    };
+  }).sort(function (a, b) { return b.count - a.count; });
+}
+
+function rollupToCsv(rollup) {
+  const cols = ["sender", "emails", "domains", "count", "currentTopCategory", "proposedCategory", "samples"];
+  const lines = [cols.join(",")];
+  rollup.forEach(function (row) {
+    lines.push(cols.map(function (c) { return csvCell(row[c]); }).join(","));
+  });
+  return lines.join("\r\n");
+}
+
+function refreshHarvestStats() {
+  chrome.storage.local.get([HARVEST_KEY], function (res) {
+    const harvest = res[HARVEST_KEY] || {};
+    const emails = Object.keys(harvest).length;
+    const senders = Object.keys(buildRollupIndex(harvest)).length;
+    $("harvest-stats").textContent =
+      "Harvested: " + emails + " emails, " + senders + " senders";
+  });
+}
+
+// Lightweight sender-key index just for the count (mirrors buildRollup's key).
+function buildRollupIndex(harvest) {
+  const keys = {};
+  Object.keys(harvest).forEach(function (id) {
+    const r = harvest[id];
+    const key = ((r.senderName || r.senderEmail || "(unknown)") + "").trim().toLowerCase();
+    keys[key] = 1;
+  });
+  return keys;
+}
+
+function initHarvester() {
+  chrome.storage.local.get([HARVEST_FLAG], function (res) {
+    $("harvest").checked = !!res[HARVEST_FLAG];
+  });
+  refreshHarvestStats();
+
+  $("harvest").addEventListener("change", function () {
+    chrome.storage.local.set({ [HARVEST_FLAG]: $("harvest").checked }, function () {
+      setStatus($("harvest").checked ? "Collecting. Scroll your inbox." : "Collection paused.");
+    });
+  });
+
+  $("dl-rollup").addEventListener("click", function () {
+    chrome.storage.local.get([HARVEST_KEY], function (res) {
+      const harvest = res[HARVEST_KEY] || {};
+      if (!Object.keys(harvest).length) return setStatus("Nothing harvested yet.", false);
+      download("unibox-sender-rollup.csv", rollupToCsv(buildRollup(harvest)), "text/csv");
+      setStatus("Rollup downloaded.");
+    });
+  });
+
+  $("dl-raw").addEventListener("click", function () {
+    chrome.storage.local.get([HARVEST_KEY], function (res) {
+      const harvest = res[HARVEST_KEY] || {};
+      if (!Object.keys(harvest).length) return setStatus("Nothing harvested yet.", false);
+      download("unibox-harvest.json", JSON.stringify(Object.values(harvest), null, 2), "application/json");
+      setStatus("Raw data downloaded.");
+    });
+  });
+
+  $("clear-harvest").addEventListener("click", function () {
+    chrome.storage.local.remove(HARVEST_KEY, function () {
+      refreshHarvestStats();
+      setStatus("Harvest cleared.");
+    });
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);

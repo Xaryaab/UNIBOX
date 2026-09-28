@@ -84,8 +84,26 @@
     footer button.primary:hover { background: #1765cc; }
 
     #status { padding: 0 14px 10px; font-size: 12px; color: #188038; min-height: 14px; }
-    .llm { padding: 4px 14px 10px; font-size: 12px; color: #5f6368; }
+    .llm { padding: 4px 14px 6px; font-size: 12px; color: #5f6368; }
     .llm b { color: #202124; font-weight: 600; }
+
+    .train { padding: 8px 14px 4px; border-top: 1px solid #e6e9ee; }
+    .switch { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+    .muted { color: #5f6368; font-size: 12px; }
+    #harvest-stats { margin: 6px 0; }
+    .train-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+    .train-actions button {
+      flex: 1 1 auto;
+      padding: 6px 8px;
+      font-size: 12px;
+      border: 1px solid #dadce0;
+      border-radius: 7px;
+      background: #fff;
+      color: #3c4043;
+      cursor: pointer;
+    }
+    .train-actions button:hover { background: #f1f3f4; }
+    .hint2 { line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -97,6 +115,23 @@
   <div id="cats" class="cats"></div>
   <div id="note" class="note" hidden>Open a Gmail tab to see live counts.</div>
   <div class="llm" id="llm">LLM fallback: <b id="llm-state">checking…</b></div>
+
+  <div class="train">
+    <label class="switch">
+      <input type="checkbox" id="harvest" />
+      <span>Collect training data</span>
+    </label>
+    <div id="harvest-stats" class="muted">Harvested: 0 emails, 0 senders</div>
+    <div class="train-actions">
+      <button id="dl-rollup">Sender rollup (CSV)</button>
+      <button id="dl-raw">Raw (JSON)</button>
+      <button id="clear-harvest">Clear</button>
+    </div>
+    <div class="muted hint2">
+      Turn on, then scroll through your inbox to gather rows. The rollup groups
+      them by sender for labelling.
+    </div>
+  </div>
 
   <footer>
     <button id="settings" class="primary">Settings</button>
