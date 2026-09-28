@@ -14,6 +14,9 @@
 (function () {
   "use strict";
 
+  // Flip to true to see per-scan logs and the review-log dump in the console.
+  const DEBUG = false;
+
   const S = window.UNIBOX_SELECTORS;
   if (!S) {
     console.error("UNiBOX: selectors.js did not load before content.js");
@@ -211,9 +214,10 @@
   // only in this content script's isolated world), so we print the stored
   // Unsure log here on load and whenever it changes. Look for "UNiBOX unsureLog".
   function dumpUnsureLog() {
+    if (!DEBUG) return;
     safeGet([UNSURE_LOG_KEY], function (res) {
       const log = res[UNSURE_LOG_KEY] || [];
-      console.log("UNiBOX unsureLog (" + log.length + " entries):", log);
+      console.log("UNiBOX review log (" + log.length + " entries):", log);
     });
   }
 
@@ -444,7 +448,7 @@
       decorateRow(row, r.category); // dot + data-unibox-cat for filtering
       return r;
     });
-    console.log("UNiBOX scan:", data.length, "rows", data);
+    if (DEBUG) console.log("UNiBOX scan:", data.length, "rows", data);
 
     // Keep the filter bar present and its counts current across redraws.
     ensureBar();

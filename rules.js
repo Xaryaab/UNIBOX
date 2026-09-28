@@ -52,6 +52,16 @@
     "placement.isb@nu.edu.pk": "Placement",
     "amir.rehman@nu.edu.pk": "Announcement",
     "studentaffairs.isb@nu.edu.pk": "Announcement",
+    // Shared NU institutional senders (same for all campus students).
+    "career.services@isb.nu.edu.pk": "Announcement",
+    "cao@isb.nu.edu.pk": "Announcement",
+    "isb.fsc@nu.edu.pk": "Announcement",
+    "bscs25@isb.nu.edu.pk": "Announcement",
+  };
+  // Whole-domain routes (checked after names, before the generated map).
+  var SENDER_DOMAIN_ROUTES = {
+    "classroom.google.com": "Academic",
+    "nu.edu.pk": "Announcement", // faculty/staff on the bare university domain
   };
   // Display-name substrings (matched case-insensitively). Keep these specific
   // to the actual senders so batch-list mail from others isn't swept in.
@@ -76,11 +86,11 @@
         return SENDER_NAME_ROUTES[i].category;
       }
     }
-    // 4. Generated per-domain map (only unambiguous domains).
-    if (map.byDomain) {
-      var d = domainOf(email);
-      if (d && map.byDomain[d]) return map.byDomain[d];
-    }
+    // 4. Hardcoded institutional domain routes.
+    var d = domainOf(email);
+    if (d && SENDER_DOMAIN_ROUTES[d]) return SENDER_DOMAIN_ROUTES[d];
+    // 5. Generated per-domain map (only unambiguous domains).
+    if (map.byDomain && d && map.byDomain[d]) return map.byDomain[d];
     return null;
   }
 

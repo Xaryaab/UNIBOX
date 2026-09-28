@@ -15,6 +15,10 @@
 const ALLOWED = ["Hackathon", "Academic", "Announcement", "Placement", "Others"];
 const SETTINGS_KEY = "settings";
 
+// Flip to true to see per-request LLM diagnostics in the service-worker console.
+const DEBUG = false;
+function dbg() { if (DEBUG) console.log.apply(console, arguments); }
+
 function getSettings() {
   return new Promise(function (resolve) {
     chrome.storage.local.get([SETTINGS_KEY], function (res) {
@@ -123,7 +127,7 @@ async function doClassify(messages, label) {
   // Not configured yet -> fall back to Others, and tell the caller NOT to
   // cache it (so it retries once a key/endpoint is set).
   if (!s.apiKey || !s.endpoint) {
-    console.warn("UNiBOX bg: not configured -", {
+    dbg("UNiBOX bg: not configured -", {
       hasKey: !!s.apiKey,
       hasEndpoint: !!s.endpoint,
     });
@@ -151,7 +155,7 @@ async function doClassify(messages, label) {
     } catch (e) {
       // Network error / "Failed to fetch": transient, back off and retry.
       const delay = BACKOFF_STEP_MS * (attempt + 1);
-      console.warn("UNiBOX bg: fetch threw", String(e), "- retry in", delay, "ms");
+      dbg("UNiBOX bg: fetch threw", String(e), "- retry in", delay, "ms");
       await sleep(delay);
       continue;
     }
@@ -165,33 +169,33 @@ async function doClassify(messages, label) {
       // a momentary spike from an exhausted daily free quota.
       if (attempt === 0) {
         const why = await resp.text();
-        console.warn("UNiBOX bg: transient", resp.status, why.slice(0, 250));
+        dbg("UNiBOX bg: transient", resp.status, why.slice(0, 250));
       }
-      console.warn("UNiBOX bg: retry in", delay, "ms");
+      dbg("UNiBOX bg: retry in", delay, "ms");
       await sleep(delay);
       continue;
     }
 
     // Model rejects the structured-output param: drop it and retry once.
     if (resp.status === 400 && useFormat) {
-      console.warn("UNiBOX bg: 400 with response_format; retrying without it");
+      dbg("UNiBOX bg: 400 with response_format; retrying without it");
       useFormat = false;
       continue;
     }
 
     if (!resp.ok) {
       const body = await resp.text();
-      console.warn("UNiBOX bg: failed", resp.status, body.slice(0, 300));
+      dbg("UNiBOX bg: failed", resp.status, body.slice(0, 300));
       return { category: "Others", cache: false };
     }
 
     const data = await resp.json();
     const category = parseCategory(data);
-    console.log("UNiBOX bg: classified", { label: label, category });
+    dbg("UNiBOX bg: classified", { label: label, category });
     return { category, cache: true };
   }
 
-  console.warn("UNiBOX bg: gave up after retries (still rate-limited)");
+  dbg("UNiBOX bg: gave up after retries (still rate-limited)");
   return { category: "Others", cache: false };
 }
 
@@ -256,7 +260,7 @@ async function labelSenders(senders) {
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (!msg) return;
   if (msg.type === "UNIBOX_CLASSIFY" && msg.row) {
-    console.log("UNiBOX bg: request received for", msg.row.subject);
+    dbg("UNiBOX bg: request received for", msg.row.subject);
     classifyWithLLM(msg.row).then(sendResponse);
     return true; // keep the message channel open for the async reply
   }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UNiBOX",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Adds a filter bar above Gmail to sort university emails into categories. Display only — never modifies, archives, or deletes anything.",
   "permissions": ["storage", "unlimitedStorage"],
   "host_permissions": ["https://api.groq.com/*"],
