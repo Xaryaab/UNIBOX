@@ -64,13 +64,23 @@
   ];
 
   function routeOne(email, name) {
-    var byEmail = SENDER_EMAIL_ROUTES[norm(email)];
-    if (byEmail) return byEmail;
+    var e = norm(email);
+    // 1. Hardcoded trusted addresses.
+    if (SENDER_EMAIL_ROUTES[e]) return SENDER_EMAIL_ROUTES[e];
+    // 2. Generated per-email map from your reviewed rollup (highest precision).
+    var map = (typeof window !== "undefined" && window.UNIBOX_SENDER_MAP) || {};
+    if (map.byEmail && map.byEmail[e]) return map.byEmail[e];
+    // 3. Display-name routes -- for mailing lists that share one address.
     var lname = norm(name);
     for (var i = 0; i < SENDER_NAME_ROUTES.length; i++) {
       if (lname.indexOf(SENDER_NAME_ROUTES[i].match) !== -1) {
         return SENDER_NAME_ROUTES[i].category;
       }
+    }
+    // 4. Generated per-domain map (only unambiguous domains).
+    if (map.byDomain) {
+      var d = domainOf(email);
+      if (d && map.byDomain[d]) return map.byDomain[d];
     }
     return null;
   }
