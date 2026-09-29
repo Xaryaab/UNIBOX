@@ -1,5 +1,9 @@
-// UNiBOX - toolbar popup. Shows live per-category counts from the active
-// Gmail tab, lets you filter from here, and exposes settings + maintenance.
+// UNiBOX - toolbar popup. Shows live per-category counts from the active Gmail
+// tab and lets you filter from here. The training-data tools are DEV-only.
+
+// Flip to true to expose the training-data harvester (dev workflow for
+// rebuilding senderMap.js). Off for normal users.
+const DEV = false;
 
 const CATEGORIES = ["All", "Academic", "Announcement", "Placement", "Others"];
 const COLORVAR = {
@@ -68,7 +72,6 @@ function applyFilter(cat) {
   askContent(gmailTab.id, { type: "UNIBOX_SET_FILTER", category: cat }).then(function (resp) {
     if (resp && resp.ok) {
       activeFilter = resp.filter;
-      // reflect the new pressed state without a full reload
       document.querySelectorAll(".cat").forEach(function (b) {
         b.setAttribute("aria-pressed", String(b.querySelector(".label").textContent === activeFilter));
       });
@@ -76,78 +79,33 @@ function applyFilter(cat) {
   });
 }
 
-function showLLMState() {
-  chrome.storage.local.get(["settings"], function (res) {
-    const s = res.settings || {};
-    const configured = !!(s.apiKey && s.endpoint);
-    $("llm-state").textContent = configured
-      ? "on (" + (s.model || "model unset") + ")"
-      : "not configured";
-  });
-}
-
 async function init() {
   gmailTab = await getGmailTab();
   if (!gmailTab) {
     $("note").hidden = false;
-    renderCats(null, "All"); // zeros, non-functional
+    renderCats(null, "All");
     document.querySelectorAll(".cat").forEach(function (b) { b.disabled = true; });
   } else {
     const resp = await askContent(gmailTab.id, { type: "UNIBOX_GET_COUNTS" });
     if (resp) {
       renderCats(resp.counts, resp.filter);
     } else {
-      // Content script not ready (e.g. tab still loading).
       $("note").hidden = false;
       $("note").textContent = "Reload the Gmail tab, then reopen this popup.";
       renderCats(null, "All");
     }
   }
 
-  showLLMState();
-
-  $("settings").addEventListener("click", function () {
-    if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
-  });
-  $("clear-log").addEventListener("click", function () {
-    chrome.storage.local.remove("unsureLog", function () { setStatus("Unsure log cleared."); });
-  });
-  $("reset-cache").addEventListener("click", function () {
-    chrome.storage.local.remove("llmCache", function () {
-      setStatus("LLM cache reset. Reload Gmail to re-classify.");
-    });
-  });
-
-  initHarvester();
+  if (DEV) {
+    $("train").hidden = false;
+    initHarvester();
+  }
 }
 
-// --- Training-data harvester controls ---------------------------------------
+// --- DEV training-data harvester --------------------------------------------
 
 const HARVEST_KEY = "harvest";
 const HARVEST_FLAG = "harvestEnabled";
-const SENDER_LABELS_KEY = "senderLabels";
-const LABEL_PROGRESS_KEY = "senderLabelProgress";
-
-let progressTimer = null;
-function pollLabelProgress() {
-  const box = $("label-progress");
-  function tick() {
-    chrome.storage.local.get([LABEL_PROGRESS_KEY], function (res) {
-      const p = res[LABEL_PROGRESS_KEY];
-      if (!p) { box.hidden = true; return; }
-      box.hidden = false;
-      box.textContent = (p.running ? "Labelling " : "Labelled ") + p.done + " / " + p.total + (p.running ? "…" : " (done)");
-      if (p.running) {
-        progressTimer = setTimeout(tick, 1000);
-      } else {
-        progressTimer = null;
-        refreshHarvestStats();
-      }
-    });
-  }
-  if (progressTimer) clearTimeout(progressTimer);
-  tick();
-}
 
 function download(filename, text, type) {
   const blob = new Blob([text], { type: type || "text/plain" });
@@ -166,7 +124,7 @@ function csvCell(v) {
   return '"' + s.replace(/"/g, '""') + '"';
 }
 
-// Group harvested rows by their sender identity (display name, else email).
+// Group harvested rows by sender identity (display name, else email).
 function buildRollup(harvest) {
   const groups = {};
   Object.keys(harvest).forEach(function (id) {
@@ -187,13 +145,13 @@ function buildRollup(harvest) {
     const g = groups[k];
     const topCat = Object.keys(g.cats).sort(function (a, b) { return g.cats[b] - g.cats[a]; })[0] || "Others";
     return {
-      key: k, // grouping key; matches senderLabels
+      key: k,
       sender: g.name || k,
       emails: Object.keys(g.emails).join("; "),
       domains: Object.keys(g.domains).join("; "),
       count: g.count,
       currentTopCategory: topCat,
-      proposedCategory: "", // filled from senderLabels (LLM) below
+      proposedCategory: topCat, // pre-filled with the rules' guess; correct by hand
       samples: g.samples.join(" | "),
     };
   }).sort(function (a, b) { return b.count - a.count; });
@@ -208,17 +166,6 @@ function rollupToCsv(rollup) {
   return lines.join("\r\n");
 }
 
-function refreshHarvestStats() {
-  chrome.storage.local.get([HARVEST_KEY], function (res) {
-    const harvest = res[HARVEST_KEY] || {};
-    const emails = Object.keys(harvest).length;
-    const senders = Object.keys(buildRollupIndex(harvest)).length;
-    $("harvest-stats").textContent =
-      "Harvested: " + emails + " emails, " + senders + " senders";
-  });
-}
-
-// Lightweight sender-key index just for the count (mirrors buildRollup's key).
 function buildRollupIndex(harvest) {
   const keys = {};
   Object.keys(harvest).forEach(function (id) {
@@ -229,16 +176,20 @@ function buildRollupIndex(harvest) {
   return keys;
 }
 
+function refreshHarvestStats() {
+  chrome.storage.local.get([HARVEST_KEY], function (res) {
+    const harvest = res[HARVEST_KEY] || {};
+    const emails = Object.keys(harvest).length;
+    const senders = Object.keys(buildRollupIndex(harvest)).length;
+    $("harvest-stats").textContent = "Harvested: " + emails + " emails, " + senders + " senders";
+  });
+}
+
 function initHarvester() {
   chrome.storage.local.get([HARVEST_FLAG], function (res) {
     $("harvest").checked = !!res[HARVEST_FLAG];
   });
   refreshHarvestStats();
-
-  // If a labelling run is in progress (or just finished), reflect it.
-  chrome.storage.local.get([LABEL_PROGRESS_KEY], function (res) {
-    if (res[LABEL_PROGRESS_KEY]) pollLabelProgress();
-  });
 
   $("harvest").addEventListener("change", function () {
     chrome.storage.local.set({ [HARVEST_FLAG]: $("harvest").checked }, function () {
@@ -247,35 +198,11 @@ function initHarvester() {
   });
 
   $("dl-rollup").addEventListener("click", function () {
-    chrome.storage.local.get([HARVEST_KEY, SENDER_LABELS_KEY], function (res) {
-      const harvest = res[HARVEST_KEY] || {};
-      if (!Object.keys(harvest).length) return setStatus("Nothing harvested yet.", false);
-      const labels = res[SENDER_LABELS_KEY] || {};
-      const rollup = buildRollup(harvest);
-      // Pre-fill proposedCategory so you only relabel the leftovers: prefer a
-      // confident (non-Others) LLM label, else fall back to what the rules
-      // already decided (currentTopCategory). Senders still at Others are the
-      // ones to categorize by hand.
-      rollup.forEach(function (row) {
-        const llm = labels[row.key];
-        row.proposedCategory = llm && llm !== "Others" ? llm : row.currentTopCategory;
-      });
-      download("unibox-sender-rollup.csv", rollupToCsv(rollup), "text/csv");
-      setStatus("Rollup downloaded.");
-    });
-  });
-
-  $("auto-label").addEventListener("click", function () {
     chrome.storage.local.get([HARVEST_KEY], function (res) {
       const harvest = res[HARVEST_KEY] || {};
       if (!Object.keys(harvest).length) return setStatus("Nothing harvested yet.", false);
-      const senders = buildRollup(harvest).map(function (r) {
-        return { key: r.key, sender: r.sender, emails: r.emails, domains: r.domains, samples: r.samples };
-      });
-      chrome.runtime.sendMessage({ type: "UNIBOX_LABEL_SENDERS", senders: senders }, function () {
-        setStatus("Labelling " + senders.length + " senders…");
-        pollLabelProgress();
-      });
+      download("unibox-sender-rollup.csv", rollupToCsv(buildRollup(harvest)), "text/csv");
+      setStatus("Rollup downloaded.");
     });
   });
 
