@@ -230,7 +230,7 @@
   // Filter bar + category dots (Stage 5)
   // ---------------------------------------------------------------------------
   // "All" first (default, shows everything); the rest match rules.js output.
-  const CATEGORIES = ["All", "Hackathon", "Academic", "Announcement", "Placement", "Others"];
+  const CATEGORIES = ["All", "Academic", "Announcement", "Placement", "Others"];
   const BAR_ID = "unibox-bar";
 
   // Which chip is active. Kept in a variable (and mirrored onto <body> as an
@@ -240,7 +240,7 @@
 
   // Latest per-category counts, so the toolbar popup can show live numbers.
   let lastCounts = {
-    All: 0, Hackathon: 0, Academic: 0, Announcement: 0, Placement: 0, Others: 0,
+    All: 0, Academic: 0, Announcement: 0, Placement: 0, Others: 0,
   };
 
   function setFilter(cat) {

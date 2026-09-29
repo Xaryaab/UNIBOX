@@ -18,7 +18,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const ALLOWED = ["Hackathon", "Academic", "Announcement", "Placement", "Others"];
+const ALLOWED = ["Academic", "Announcement", "Placement", "Others"];
 
 // Minimal RFC-4180-ish CSV parser (handles quotes, escaped quotes, newlines).
 function parseCsv(text) {
@@ -78,7 +78,7 @@ function main() {
     const r = rows[i];
     let cat = (r[col.proposedCategory] || "").trim();
     if (!cat) continue;
-    if (cat === "Unsure") cat = "Others"; // legacy label -> catch-all
+    if (cat === "Unsure" || cat === "Hackathon") cat = "Others"; // retired labels -> catch-all
     if (ALLOWED.indexOf(cat) === -1) {
       badCat++;
       console.warn("  ! row " + (i + 1) + ': unknown category "' + cat + '" -- skipped');

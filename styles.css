@@ -84,7 +84,6 @@
 
 /* chip accent colors, one per category */
 .unibox-chip[data-cat="All"]          { --unibox-color: #5f6368; }
-.unibox-chip[data-cat="Hackathon"]    { --unibox-color: #8e24aa; }
 .unibox-chip[data-cat="Academic"]     { --unibox-color: #1a73e8; }
 .unibox-chip[data-cat="Announcement"] { --unibox-color: #f9ab00; }
 .unibox-chip[data-cat="Placement"]    { --unibox-color: #188038; }
@@ -102,7 +101,6 @@
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
   flex: none;
 }
-.unibox-dot[data-cat="Hackathon"]    { background: #8e24aa; }
 .unibox-dot[data-cat="Academic"]     { background: #1a73e8; }
 .unibox-dot[data-cat="Announcement"] { background: #f9ab00; }
 .unibox-dot[data-cat="Placement"]    { background: #188038; }
@@ -113,7 +111,6 @@
    than All is active, and tags each row with data-unibox-cat. These rules
    then hide only the rows that don't match. Matching rows are never touched,
    so their native Gmail display is preserved and All is instant. */
-body[data-unibox-filter="Hackathon"]    tr.zA.unibox-row:not([data-unibox-cat="Hackathon"])    { display: none; }
 body[data-unibox-filter="Academic"]     tr.zA.unibox-row:not([data-unibox-cat="Academic"])     { display: none; }
 body[data-unibox-filter="Announcement"] tr.zA.unibox-row:not([data-unibox-cat="Announcement"]) { display: none; }
 body[data-unibox-filter="Placement"]    tr.zA.unibox-row:not([data-unibox-cat="Placement"])    { display: none; }

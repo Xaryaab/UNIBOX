@@ -12,7 +12,7 @@
 //             or an error, so content.js can retry later instead of caching a
 //             fallback.
 
-const ALLOWED = ["Hackathon", "Academic", "Announcement", "Placement", "Others"];
+const ALLOWED = ["Academic", "Announcement", "Placement", "Others"];
 const SETTINGS_KEY = "settings";
 
 // Flip to true to see per-request LLM diagnostics in the service-worker console.
@@ -32,11 +32,11 @@ function getSettings() {
 function buildMessages(row) {
   const system =
     "You classify a university student's incoming email into exactly one " +
-    "category. Allowed categories: Hackathon, Academic, Announcement, " +
-    "Placement, Others. Use Others for anything that fits none of the first " +
-    "four (promotions, newsletters, personal DMs, etc.). " +
+    "category. Allowed categories: Academic, Announcement, Placement, Others. " +
+    "Use Others for anything that fits none of the first three (promotions, " +
+    "newsletters, personal DMs, etc.). " +
     'Respond with ONLY a JSON object of the exact form {"category":"<one>"} ' +
-    "where <one> is one of the five allowed words. No prose, no explanation.";
+    "where <one> is one of the four allowed words. No prose, no explanation.";
   const user =
     "Sender name: " + (row.senderName || "") + "\n" +
     "Sender email: " + (row.senderEmail || "") + "\n" +
@@ -94,8 +94,8 @@ function buildSenderMessages(sd) {
   const system =
     "You label an email SENDER into exactly one category for a university " +
     "student, judging by the sender and example subject lines. Allowed " +
-    "categories: Hackathon, Academic, Announcement, Placement, Others. Use " +
-    "Others for senders that fit none of the first four (e.g. generic " +
+    "categories: Academic, Announcement, Placement, Others. Use " +
+    "Others for senders that fit none of the first three (e.g. generic " +
     'promotions, newsletters, personal DMs). Respond with ONLY {"category":"<one>"} and nothing else.';
   const subjects = (sd.samples || "")
     .split(" | ").filter(Boolean).map(function (x) { return "- " + x; }).join("\n");

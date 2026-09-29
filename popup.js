@@ -1,9 +1,9 @@
 // UNiBOX - toolbar popup. Shows live per-category counts from the active
 // Gmail tab, lets you filter from here, and exposes settings + maintenance.
 
-const CATEGORIES = ["All", "Hackathon", "Academic", "Announcement", "Placement", "Others"];
+const CATEGORIES = ["All", "Academic", "Announcement", "Placement", "Others"];
 const COLORVAR = {
-  All: "--all", Hackathon: "--hackathon", Academic: "--academic",
+  All: "--all", Academic: "--academic",
   Announcement: "--announcement", Placement: "--placement", Others: "--others",
 };
 

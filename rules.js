@@ -1,18 +1,18 @@
 // UNiBOX - Stage 4: classification rules (implements rules.txt).
 //
 // Priority order, top to bottom, first match wins:
-//   1. Hackathon  2. Academic  3. Announcement  4. Placement  5. Others
+//   0. Trusted senders  1. Academic  2. Announcement  3. Placement  4. Others
 //
 // classify(row) takes { senderName, senderEmail, subject, snippet } and
 // returns an object:
 //   { category, reason, matched }
-//     category: "Hackathon" | "Academic" | "Announcement" | "Placement" | "Others"
-//     reason:   null in every case EXCEPT the Hackathon LLM-fallback
-//               placeholder, where it is "possible-hackathon".
+//     category: "Academic" | "Announcement" | "Placement" | "Others"
+//     reason:   currently always null.
 //     matched:  true if a rule placed the row; false if nothing matched and it
 //               defaulted to Others (these are the rows worth an LLM look).
 // "Others" is the catch-all bucket -- promotions, DMs, anything no rule owns.
-// All matching is case-insensitive.
+// (Hackathon mail arrives via Student Affairs / Placement, so it needs no
+// separate category.) All matching is case-insensitive.
 
 (function () {
   "use strict";
@@ -104,23 +104,9 @@
     return null;
   }
 
-  // --- rule 1: Hackathon ---------------------------------------------------
-  // Hard keywords: a clear match here IS a Hackathon.
-  var HACK_SUBJECT_KEYWORDS = ["Competition", "Hackathon", "Hack Summer", "Build with AI"];
-
-  // Soft signals for rules.txt's "loosely suggests a competition/build event
-  // but no clear keyword" branch. In the finished design an LLM makes that
-  // call (Stage 6). Until then this conservative keyword list stands in:
-  // a row hitting a soft signal is flagged Unsure + "possible-hackathon" so
-  // it surfaces in the review log. See where this is applied below for the
-  // one ordering decision worth knowing about.
-  //
-  // PLACEHOLDER for Stage 6 -- to be replaced by the LLM Hackathon/Not call.
-  var HACK_SOFT_SIGNALS = [
-    "hack", "challenge", "contest", "ideathon", "datathon", "devpost",
-    "hackfest", "code sprint", "coding sprint", "innovation", "prize",
-    "win prizes", "submission deadline", "register your team", "tech fest"
-  ];
+  // Note: there is no separate Hackathon category -- hackathon/competition
+  // mail reaches NU students via Student Affairs / Placement, so it lands in
+  // Announcement or Placement through the sender rules above.
 
   // --- rule 3: Announcement ------------------------------------------------
   var ANNOUNCEMENT_SENDERS = ["studentaffairs.isb@nu.edu.pk", "amir.rehman@nu.edu.pk"];
@@ -131,12 +117,6 @@
   var PLACEMENT_EXACT_SUBJECTS = ["A Weekend worth spending", "Level up your tech skills"];
   var PLACEMENT_SUBJECT_KEYWORDS = ["Job", "Internship", "Opportunities", "Vacancy Announcement"];
   var PLACEMENT_SENDER_SUBJECT_KEYWORDS = ["Manager", "Paid"];
-
-  function looselyHackathon(name, email, subject) {
-    return containsAny(subject, HACK_SOFT_SIGNALS) ||
-           containsAny(name, HACK_SOFT_SIGNALS) ||
-           containsAny(email, HACK_SOFT_SIGNALS);
-  }
 
   function classify(row) {
     var name = row.senderName || "";
@@ -153,24 +133,19 @@
       return { category: routed, reason: null, matched: true };
     }
 
-    // 1. Hackathon / Competition -- hard keyword match wins outright.
-    if (containsAny(subject, HACK_SUBJECT_KEYWORDS)) {
-      return { category: "Hackathon", reason: null, matched: true };
-    }
-
-    // 2. Academics
+    // 1. Academics
     if (domainOf(email) === "classroom.google.com" ||
         containsAny(name, ["(Classroom)"])) {
       return { category: "Academic", reason: null, matched: true };
     }
 
-    // 3. Announcement
+    // 2. Announcement
     if (ANNOUNCEMENT_SENDERS.some(function (s) { return equals(email, s); }) ||
         containsAny(subject, ANNOUNCEMENT_SUBJECTS)) {
       return { category: "Announcement", reason: null, matched: true };
     }
 
-    // 4. Placement Offer
+    // 3. Placement Offer
     if (equals(email, PLACEMENT_SENDER) ||
         PLACEMENT_EXACT_SUBJECTS.some(function (s) { return equals(subject, s); })) {
       return { category: "Placement", reason: null, matched: true };
@@ -183,19 +158,7 @@
       return { category: "Placement", reason: null, matched: true };
     }
 
-    // 5. Everything else -> Others (nothing matched: matched=false).
-    //
-    // ORDERING NOTE: rules.txt nests the "loosely suggests a hackathon" LLM
-    // branch inside rule 1, i.e. at top priority. Applied literally there, a
-    // broad placeholder keyword list ("challenge", "innovation", "prize", ...)
-    // would hijack rows that the concrete rules below (Placement etc.) claim
-    // cleanly, mislabeling them as possible-hackathon. Since the real LLM step
-    // is meant to catch genuinely AMBIGUOUS mail -- the kind no hard rule owns
-    // -- the soft check is applied here, only to rows that would otherwise be
-    // plain Others.
-    if (looselyHackathon(name, email, subject)) {
-      return { category: "Others", reason: "possible-hackathon", matched: false };
-    }
+    // 4. Everything else -> Others (nothing matched: matched=false).
     return { category: "Others", reason: null, matched: false };
   }
 

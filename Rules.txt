@@ -16,13 +16,9 @@ Priority order: check top to bottom, first match wins.
    sender name contains "Amir Rehman"
      OR sender email = amir.rehman@nu.edu.pk         -> Announcement
 
-1. Hackathon / Competition
-   subject contains "Competition", "Hackathon", "Hack Summer", "Build with AI"
-     -> Hackathon
-   ELSE IF sender or subject loosely suggests a competition/build event
-   but no clear keyword match
-     -> send to LLM for a Hackathon / Not-Hackathon decision
-        (LLM sees full sender + subject + snippet)
+(Note: there is no separate Hackathon category. Hackathon / competition
+mail reaches NU students via Student Affairs or Placement, so it is
+categorized as Announcement or Placement by the sender rules above.)
 
 2. Academics
    sender domain = classroom.google.com
